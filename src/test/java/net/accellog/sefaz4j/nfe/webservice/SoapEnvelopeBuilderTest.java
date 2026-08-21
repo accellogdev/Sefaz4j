@@ -27,4 +27,18 @@ public class SoapEnvelopeBuilderTest {
         assertTrue(envelope.contains("<nRec>123456789012345</nRec>"));
         assertTrue(envelope.contains("xmlns=\"http://www.portalfiscal.inf.br/nfe/wsdl/NFeRetAutorizacao4\""));
     }
+
+    @Test
+    public void envelopeConsultaSituacaoEmbutteConsSitNFe() {
+        String consSitNFeXml = "<consSitNFe xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"4.00\">" +
+            "<tpAmb>2</tpAmb><xServ>CONSULTAR</xServ>" +
+            "<chNFe>35250812345678000195550010000001231123456789</chNFe>" +
+            "</consSitNFe>";
+
+        String envelope = SoapEnvelopeBuilder.envelopeConsultaSituacao(consSitNFeXml);
+
+        assertTrue(envelope.contains("<soap12:Envelope"));
+        assertTrue(envelope.contains("xmlns=\"http://www.portalfiscal.inf.br/nfe/wsdl/NFeConsultaProtocolo4\""));
+        assertTrue(envelope.contains(consSitNFeXml));
+    }
 }

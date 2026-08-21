@@ -11,6 +11,7 @@ public final class Sefaz4jConfig {
     private final String senhaPfx;
     private final String urlAutorizacaoOverride;
     private String urlRetAutorizacaoOverride;
+    private String urlConsultaProtocoloOverride;
     private Duration timeout = Duration.ofSeconds(30);
     private int maxTentativasPolling = 5;
     private Duration intervaloPolling = Duration.ofSeconds(5);
@@ -60,6 +61,22 @@ public final class Sefaz4jConfig {
      */
     public Sefaz4jConfig setUrlRetAutorizacaoOverride(String urlRetAutorizacaoOverride) {
         this.urlRetAutorizacaoOverride = urlRetAutorizacaoOverride;
+        return this;
+    }
+
+    public String getUrlConsultaProtocoloOverride() {
+        return urlConsultaProtocoloOverride;
+    }
+
+    /**
+     * Sobrescreve a URL do serviço NfeConsultaProtocolo4 (por padrão
+     * resolvida via {@code EndpointResolver}/{@code nfe-servicos.ini} a
+     * partir de UF+Ambiente), simetricamente aos demais overrides de URL já
+     * existentes. Útil para testes e para ambientes com um proxy/gateway
+     * próprio na frente da SEFAZ.
+     */
+    public Sefaz4jConfig setUrlConsultaProtocoloOverride(String urlConsultaProtocoloOverride) {
+        this.urlConsultaProtocoloOverride = urlConsultaProtocoloOverride;
         return this;
     }
 
