@@ -1,0 +1,18 @@
+target/
+.worktrees/
+.superpowers/
+
+# Reference material, not part of the library itself
+Schemas/
+exemplos/
+
+# Note: on case-insensitive filesystems, "Schemas/" above also matches
+# src/main/resources/schemas/ (the bundled, tracked copy of the XSDs used by
+# the JAXB codegen plugin) — un-ignore it explicitly.
+!/src/main/resources/schemas/
+
+# IDE
+*.iml
+.idea/
+/.claude
+/docs/superpowers
