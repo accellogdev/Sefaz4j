@@ -19,4 +19,28 @@ public class ValidadorXsdTest {
             assertFalse("A lista de violações não deve vir vazia", e.getViolacoes().isEmpty());
         }
     }
+
+    @Test
+    public void validaContraUmXsdRaizDiferentoDoPadrao() {
+        String consultaValida = "<consSitNFe xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"4.00\">" +
+            "<tpAmb>2</tpAmb><xServ>CONSULTAR</xServ>" +
+            "<chNFe>35250812345678000195550010000001231123456789</chNFe>" +
+            "</consSitNFe>";
+
+        ValidadorXsd.validar(consultaValida, "/schemas/nfe/consSitNFe_v4.00.xsd");
+    }
+
+    @Test
+    public void validaContraUmXsdRaizDiferentoDoPadraoRejeitaXmlInvalido() {
+        String consultaSemChave = "<consSitNFe xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"4.00\">" +
+            "<tpAmb>2</tpAmb><xServ>CONSULTAR</xServ>" +
+            "</consSitNFe>";
+
+        try {
+            ValidadorXsd.validar(consultaSemChave, "/schemas/nfe/consSitNFe_v4.00.xsd");
+            fail("Deveria ter lançado ValidacaoXsdException — chNFe é obrigatório");
+        } catch (ValidacaoXsdException e) {
+            assertFalse(e.getViolacoes().isEmpty());
+        }
+    }
 }
