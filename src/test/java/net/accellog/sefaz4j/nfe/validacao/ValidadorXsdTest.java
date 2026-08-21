@@ -21,7 +21,7 @@ public class ValidadorXsdTest {
     }
 
     @Test
-    public void validaContraUmXsdRaizDiferentoDoPadrao() {
+    public void validaContraUmXsdRaizDiferenteDoPadrao() {
         String consultaValida = "<consSitNFe xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"4.00\">" +
             "<tpAmb>2</tpAmb><xServ>CONSULTAR</xServ>" +
             "<chNFe>35250812345678000195550010000001231123456789</chNFe>" +
@@ -31,7 +31,7 @@ public class ValidadorXsdTest {
     }
 
     @Test
-    public void validaContraUmXsdRaizDiferentoDoPadraoRejeitaXmlInvalido() {
+    public void validaContraUmXsdRaizDiferenteDoPadraoRejeitaXmlInvalido() {
         String consultaSemChave = "<consSitNFe xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"4.00\">" +
             "<tpAmb>2</tpAmb><xServ>CONSULTAR</xServ>" +
             "</consSitNFe>";

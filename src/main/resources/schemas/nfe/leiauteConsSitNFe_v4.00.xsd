@@ -311,7 +311,7 @@
 					<xs:attribute name="Id" use="required">
 						<xs:annotation>
 							<xs:documentation>Identificador da TAG a ser assinada, a regra de formação do Id é:
-"ID" + tpEvento +  chave da NF-e + nSeqEvento</xs:documentation>
+“ID” + tpEvento +  chave da NF-e + nSeqEvento</xs:documentation>
 						</xs:annotation>
 						<xs:simpleType>
 							<xs:restriction base="xs:ID">
