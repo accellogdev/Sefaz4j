@@ -19,40 +19,44 @@ sobre TLS mútuo (certificado A1) e, se o lote ficar "em processamento", faz o p
 
 ## Como importar em outro projeto
 
-O código-fonte fica em [github.com/accellogdev/Sefaz4j](https://github.com/accellogdev/Sefaz4j),
-mas o Sefaz4j **não é publicado em nenhum repositório Maven remoto** (nem Central, nem GitHub
-Packages) — é preciso clonar e instalar no repositório Maven local (`~/.m2`) antes de usá-lo como
-dependência em outro projeto.
+O Sefaz4j é publicado no **GitHub Packages** a cada release
+([github.com/accellogdev/Sefaz4j/releases](https://github.com/accellogdev/Sefaz4j/releases)), no
+pacote `net.accellog:sefaz4j`.
 
-1. Clone o repositório e instale o jar no repositório local:
-
-   ```bash
-   git clone https://github.com/accellogdev/Sefaz4j.git
-   cd Sefaz4j
-   mvn clean install
-   ```
-
-   Isso também dispara a geração de classes JAXB (`generate-sources`) e roda a suíte de testes
-   (veja a seção [Como testar](#como-testar) para saltar isso, se necessário).
-
-2. No `pom.xml` do projeto consumidor, adicione a dependência com o mesmo `groupId`/`artifactId`/
-   `version` deste `pom.xml`:
+1. Adicione o repositório do GitHub Packages ao `pom.xml` do projeto consumidor:
 
    ```xml
+   <repositories>
+       <repository>
+           <id>github</id>
+           <url>https://maven.pkg.github.com/accellogdev/Sefaz4j</url>
+       </repository>
+   </repositories>
+
    <dependency>
        <groupId>net.accellog</groupId>
-       <artifactId>Sefaz4j</artifactId>
-       <version>1.0.0</version>
+       <artifactId>sefaz4j</artifactId>
+       <version>1.0.0-alpha-1</version>
    </dependency>
    ```
 
-Sempre que uma nova versão for publicada no GitHub (nova tag/release), repita `git pull` +
-`mvn clean install` e atualize a versão no projeto consumidor — não há resolução automática de
-dependência transitiva via GitHub, o `~/.m2` local é a única "fonte" que o Maven do consumidor vê.
+2. O GitHub Packages exige autenticação para *download* mesmo em repositórios públicos — não tem
+   acesso anônimo para Maven. No `~/.m2/settings.xml` de quem for consumir, configure um servidor
+   com `id` igual ao do `<repository>` acima e um
+   [Personal Access Token](https://github.com/settings/tokens) com escopo `read:packages`:
 
-Alternativa sem instalar no `~/.m2`: usar este repositório como módulo de um projeto Maven
-multi-módulo (reactor), declarando-o como `<module>` no `pom.xml` pai — útil se os dois projetos
-vivem no mesmo monorepo/workspace e você não quer depender do cache local.
+   ```xml
+   <servers>
+       <server>
+           <id>github</id>
+           <username>SEU_USUARIO_GITHUB</username>
+           <password>SEU_TOKEN_COM_read:packages</password>
+       </server>
+   </servers>
+   ```
+
+Alternativa sem usar o GitHub Packages: clonar o repositório e rodar `mvn clean install` para
+instalar o jar no `~/.m2` local, com a mesma dependência acima.
 
 ## Uso rápido
 

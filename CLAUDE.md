@@ -89,3 +89,29 @@ propagates as one of three unchecked exception types instead:
   XXE/DOCTYPE — `ValidadorXsd`'s `SchemaFactory` loading the bundled schema chain is intentionally left as-is.
 - Maven resource filtering (`${...}` substitution) is scoped to exclude `schemas/**` and `endpoints/**` in
   `pom.xml`, so a literal `${...}` in a bundled XSD/ini is never mistaken for a Maven property placeholder.
+- The `org.jvnet.jaxb2.maven2:maven-jaxb2-plugin:0.14.0` used for JAXB codegen bundles an old JAXB RI that
+  calls `sun.misc.Unsafe.defineClass`, which was removed in JDK 24+; a clean `generate-sources` on JDK 25
+  fails with `NoSuchMethodException`/`NoSuchFieldException` on `Injector` without the version overrides
+  already pinned in the plugin's `<dependencies>` in `pom.xml` (`org.glassfish.jaxb:jaxb-xjc:2.3.5`,
+  `org.glassfish.jaxb:jaxb-runtime:2.3.9`, `com.sun.xml.bind.external:rngom:4.0.5` — the last one because
+  `jaxb-xjc:2.3.5` expects the old `com.sun.tools.rngom.*` package, but the `rngom` version it resolves by
+  default ships the renamed `org.kohsuke.rngom.*` instead). Don't remove or downgrade these without
+  re-verifying a full clean `mvn package` (delete `target/generated-sources` first — a stale generated
+  model masks the failure).
+
+## Release / CI
+
+`.github/workflows/maven-publish.yml` builds, tests, and publishes the jar to **GitHub Packages**
+(`https://maven.pkg.github.com/accellogdev/Sefaz4j`, `distributionManagement` in `pom.xml`) on
+`release: created`. Two things that bite:
+
+- The `release` event pins the commit the tag pointed to **at creation time**. Re-running a stale workflow
+  run (or a run tied to an already-existing tag) rebuilds that old commit — it does not pick up new pushes
+  to `main`. To actually test a `pom.xml`/workflow fix, cut a new release/tag against the current commit
+  (bump the version) rather than just re-running an old job.
+- GitHub Packages' Maven registry 422s on artifact IDs with uppercase letters — `artifactId` is `sefaz4j`
+  (lowercase) for this reason, distinct from the project `<name>` (`Accellog`). Consumers also need a
+  GitHub PAT with `read:packages` even for this public repo (see README for the `settings.xml` snippet) —
+  GitHub Packages has no anonymous download for Maven.
+- Current version follows a Maven-native pre-release qualifier scheme (`1.0.0-alpha-1`, `-alpha-2`, ...)
+  so it sorts correctly before the eventual `1.0.0` release per Maven's version comparator.
