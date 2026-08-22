@@ -2,8 +2,8 @@
 
 Biblioteca Java pura (sem framework, sem `main`) para emissão e comunicação com a SEFAZ dos
 documentos fiscais eletrônicos brasileiros. O objetivo final é cobrir **NFe**, **CTe**, **MDFe** e
-**NFSe**, mas hoje só o **ciclo de vida completo da NFe 4.00** está implementado — os demais
-documentos ainda não têm código neste repositório.
+**NFSe**; hoje estão implementados o **ciclo de vida completo da NFe 4.00** e a **emissão do CTe
+4.00** — MDFe e NFSe, e o ciclo de vida pós-emissão do CTe, ainda não têm código neste repositório.
 
 O que o pacote de NFe já faz: monta o XML a partir de um objeto JAXB (`TNFe`), calcula a chave de
 acesso, assina digitalmente (XML-DSig), valida contra a XSD oficial da SEFAZ, transmite via SOAP
@@ -11,6 +11,11 @@ sobre TLS mútuo (certificado A1) e, se o lote ficar "em processamento", faz o p
 `NFeRetAutorizacao4` até obter o protocolo. Além da emissão, também cobre o ciclo de vida
 pós-emissão: consulta de situação, cancelamento, Carta de Correção (CC-e) e inutilização de faixa
 de numeração.
+
+O pacote de CTe cobre, por enquanto, só a emissão: monta o XML a partir de um `TCTe` (JAXB), calcula
+a chave de acesso, assina, valida contra a XSD oficial e transmite via `CTeRecepcaoSinc` — um
+serviço **síncrono** (sem lote, sem `indSinc`, sem polling: a chamada HTTP já devolve o `cStat`/
+`protCTe` definitivos).
 
 ## Requisitos
 
@@ -147,6 +152,58 @@ quando o chamador passa um valor malformado.
 Ajuste os parâmetros de polling e timeout com os setters fluentes de `Sefaz4jConfig`:
 `setTimeout`, `setMaxTentativasPolling`, `setIntervaloPolling` (padrões: 30s, 5 tentativas, 5s).
 
+## CTe
+
+O CTe (Conhecimento de Transporte Eletrônico) é o segundo documento coberto pela lib — por
+enquanto só a emissão (`net.accellog.sefaz4j.cte`, fase 1). A API espelha a do NFe, mas é mais
+simples porque o serviço de recepção do CTe 4.00 é síncrono: não há lote/`indSinc`/polling — a
+própria resposta HTTP já traz o `cStat`/`protCTe` definitivos.
+
+```java
+import net.accellog.sefaz4j.cte.ResultadoEmissao;
+import net.accellog.sefaz4j.cte.Sefaz4jConfig;
+import net.accellog.sefaz4j.cte.Sefaz4jCTe;
+import net.accellog.sefaz4j.cte.model.ObjectFactory;
+import net.accellog.sefaz4j.cte.model.TCTe;
+import net.accellog.sefaz4j.endpoints.Ambiente;
+import net.accellog.sefaz4j.endpoints.UF;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+byte[] pfxBytes = Files.readAllBytes(Path.of("/caminho/para/certificado.pfx"));
+
+Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.HOMOLOGACAO, pfxBytes, "senha-do-pfx");
+
+// TCTe é gerado por JAXB a partir da XSD oficial do CTe 4.00 (net.accellog.sefaz4j.cte.model) —
+// monte-o com ObjectFactory preenchendo ide/emit/rem/dest/vPrest/imp/infCTeNorm conforme o
+// manual do CT-e.
+ObjectFactory fabrica = new ObjectFactory();
+TCTe cte = fabrica.createTCTe();
+// ... preencher cte.setInfCte(...) com os grupos obrigatórios do CT-e ...
+
+ResultadoEmissao resultado = Sefaz4jCTe.emitir(config, cte);
+
+if (resultado.isOk()) {
+    String xmlAutorizado = resultado.getXmlAutorizado(); // <cteProc> pronto para persistir/DACTE
+} else {
+    // cStat/xMotivo != 100: rejeição de negócio da SEFAZ, não uma falha técnica
+    System.out.println(resultado.getCStat() + " - " + resultado.getXMotivo());
+}
+```
+
+Se o XML já vier assinado por outro processo, pule direto para validação+transmissão com
+`Sefaz4jCTe.enviarXmlAssinado(config, xmlAssinado)`.
+
+O conteúdo específico do modal de transporte (`infCTeNorm/infModal` — rodoviário, aéreo,
+aquaviário, ferroviário, dutoviário) é declarado no XSD oficial como um `xs:any
+processContents="skip"`: a lib não gera nem valida esse trecho, quem monta o `TCTe` constrói o
+XML do modal escolhido por conta própria e injeta ali antes de chamar `emitir`.
+
+As mesmas 3 exceções técnicas do NFe (`CertificadoException`/`ValidacaoXsdException`/
+`ComunicacaoException`) valem para o CTe; como não há polling nesta fase, `ComunicacaoException`
+não tem o caso de lote "ainda em processamento".
+
 ## Como testar
 
 ```bash
@@ -155,12 +212,14 @@ mvn test -Dtest=NomeDaClasse#metodo       # um teste específico
 mvn test -Pintegration-tests              # também roda o teste de integração com a Homologação real
 ```
 
-O `mvn test` sozinho nunca sai para a rede: `HomologacaoIntegrationTest` (em
-`src/test/java/.../nfe/integration/`) é excluído por padrão pela configuração do
-`maven-surefire-plugin` e só é incluído com o profile `integration-tests`. Mesmo assim, ele se
-autoexclui (`org.junit.Assume`) a menos que as variáveis de ambiente `SEFAZ4J_TEST_PFX_PATH` e
-`SEFAZ4J_TEST_PFX_SENHA` apontem para um certificado A1 real — ou seja, ele só chega a acessar a
-SEFAZ de Homologação de verdade se você fornecer essas duas variáveis:
+O `mvn test` sozinho nunca sai para a rede: `HomologacaoIntegrationTest` (NFe, em
+`src/test/java/.../nfe/integration/`) e `HomologacaoIntegrationTestCTe` (CTe, em
+`src/test/java/.../cte/integration/`) são excluídos por padrão pela configuração do
+`maven-surefire-plugin` e só são incluídos com o profile `integration-tests`. Mesmo assim, eles se
+autoexcluem (`org.junit.Assume`) a menos que as variáveis de ambiente `SEFAZ4J_TEST_PFX_PATH` e
+`SEFAZ4J_TEST_PFX_SENHA` apontem para um certificado A1 real (o mesmo certificado serve para os
+dois documentos) — ou seja, eles só chegam a acessar a SEFAZ de Homologação de verdade se você
+fornecer essas duas variáveis:
 
 ```bash
 export SEFAZ4J_TEST_PFX_PATH=/caminho/para/certificado-homologacao.pfx
@@ -168,24 +227,29 @@ export SEFAZ4J_TEST_PFX_SENHA=senha-do-certificado
 mvn test -Pintegration-tests
 ```
 
-## Estrutura de pacotes (NFe)
+## Estrutura de pacotes (NFe e CTe)
 
-Tudo que um consumidor precisa está no pacote raiz `net.accellog.sefaz4j.nfe` (a fachada
-`Sefaz4jNFe` e os tipos de config/resultado). Os demais pacotes são implementação interna:
+Um consumidor de NFe precisa do pacote raiz `net.accellog.sefaz4j.nfe` (a fachada `Sefaz4jNFe` e os
+tipos de config/resultado); um consumidor de CTe, do `net.accellog.sefaz4j.cte` (fachada
+`Sefaz4jCTe`, fase 1 só com emissão). Os demais pacotes são implementação interna, e as peças de
+infraestrutura genéricas (`chave`, `assinatura`, `validacao`, `webservice`, `endpoints`) ficam na
+raiz e são compartilhadas pelos dois documentos:
 
 - `chave` — cálculo da chave de acesso de 44 dígitos (mod-11)
-- `xml` — montagem do DOM a partir do `TNFe`
+- `nfe.xml` / `cte.xml` — montagem do DOM a partir do `TNFe`/`TCTe`
 - `assinatura` — assinatura XML-DSig (Apache Santuario) e carregamento do certificado A1
-- `validacao` — validação contra a XSD oficial `nfe_v4.00.xsd`
-- `webservice` — cliente HTTP com TLS mútuo, montagem do envelope SOAP, parsing da resposta e
-  polling de `NFeRetAutorizacao4`
-- `endpoints` — resolução de URL por UF/Ambiente/Serviço
+- `validacao` — validação contra a XSD oficial (`nfe_v4.00.xsd` ou `cte_v4.00.xsd`, conforme o documento)
+- `webservice` — cliente HTTP com TLS mútuo e parsing da resposta, compartilhados; a montagem do
+  envelope SOAP e o polling de `NFeRetAutorizacao4` (só NFe — o CTe é síncrono) ficam em
+  `nfe.webservice`/`cte.webservice`
+- `endpoints` — resolução de URL por UF/Ambiente/Serviço (`nfe-servicos.ini`/`cte-servicos.ini`)
 - `model` — classes **geradas** por JAXB a partir das XSDs (não editar à mão)
 
 ## Roadmap
 
 - [x] NFe — envio/autorização (4.00)
 - [x] NFe — ciclo de vida pós-emissão (consulta/cancelamento/CC-e/inutilização)
-- [ ] CTe
+- [x] CTe — emissão (4.00)
+- [ ] CTe — ciclo de vida pós-emissão
 - [ ] MDFe
 - [ ] NFSe

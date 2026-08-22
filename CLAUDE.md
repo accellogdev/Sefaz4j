@@ -6,7 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Sefaz4j is a pure-Java library (no framework, no `main`/`spring-boot:run`) that builds, signs,
 XSD-validates, and transmits Brazilian NFe (electronic invoices) 4.00 to SEFAZ web services over
-mutual-TLS SOAP. It targets the A1 (software-certificate) emission flow.
+mutual-TLS SOAP. It targets the A1 (software-certificate) emission flow. CTe (Conhecimento de
+Transporte Eletrônico) 4.00 emission was added alongside NFe as the library's second document type
+(see "## CTe (fase 1: emissão)" below); the two share the same root infrastructure packages.
 
 ## Build & test
 
@@ -30,7 +32,8 @@ and only re-included by the `integration-tests` Maven profile. Even then, it sel
 
 ## Public API
 
-Everything a consumer needs lives in the top-level package `net.accellog.sefaz4j.nfe`:
+Everything an NFe consumer needs lives in the top-level package `net.accellog.sefaz4j.nfe` (the CTe
+equivalent, `net.accellog.sefaz4j.cte`, is documented in its own section below):
 
 - **`Sefaz4jNFe`** — the facade. `emitir(Sefaz4jConfig, TNFe)` builds the chave de acesso, signs, XSD-validates,
   transmits, and (if the lot is still processing) polls `NFeRetAutorizacao4`, returning a `ResultadoEmissao`.
@@ -63,23 +66,60 @@ propagates as one of three unchecked exception types instead:
   the lot still being `103` after `ReciboPoller` exhausts its polling attempts (an ambiguous outcome, deliberately
   not reported as `ok=false` — the caller must not blindly retry an NFe of unknown status).
 
+## CTe (fase 1: emissão)
+
+`net.accellog.sefaz4j.cte` is the second document type, mirroring the NFe package shape but covering
+only emission (fase 1) — no consulta/cancelamento/CC-e/inutilização for CTe yet.
+
+- **`Sefaz4jCTe`** — the facade, only two public methods. `emitir(Sefaz4jConfig, TCTe)` first checks
+  that `infCte/ide/tpAmb` (when present) matches the configured `Ambiente`'s `tpAmb`, throwing
+  `IllegalArgumentException` early otherwise (the same tpAmb-vs-Ambiente safety guard `Sefaz4jNFe.emitir`
+  has); it then builds the chave de acesso + `Document` via `CTeXmlBuilder`, signs the `infCte` element,
+  XSD-validates against `cte_v4.00.xsd`, and transmits once — there is **no lot/polling step**: CTe 4.00
+  has no `enviCTe_v4.00.xsd` (only v2.00/v3.00 have one), the root element sent to `CTeRecepcaoSinc` is
+  the `<CTe>` itself, and the `retCTe` response's `cStat`/`protCTe` are already final. `Sefaz4jCTe` has
+  no `ReciboPoller` equivalent for this reason. `enviarXmlAssinado(Sefaz4jConfig, String)` skips straight
+  to validate+transmit for an already-signed XML.
+- **`net.accellog.sefaz4j.cte.Sefaz4jConfig`** — `UF`, `Ambiente`, PFX bytes + password, optional
+  `urlAutorizacaoOverride` (constructor arg, or fluent `setUrlAutorizacaoOverride`), and a fluent
+  `setTimeout` (default 30s). No polling-related setters — there is nothing to poll.
+- **`net.accellog.sefaz4j.cte.ResultadoEmissao`** — same shape as the NFe one: `isOk()` is `true` only
+  when `cStat` is `100`; `getCStat()`/`getXMotivo()` always populated; `getChCTe()` (chave de acesso);
+  `getXmlAutorizado()` is a single well-formed XML document, wrapped in `<cteProc>` when a `protCTe` is
+  present.
+- **`infModal` is `xs:any` — deliberately untyped/unvalidated.** `cteTiposBasico_v4.00.xsd` declares
+  `infCTeNorm/infModal` as an `<xs:any processContents="skip"/>`, so the official layout itself delegates
+  modal-specific content (rodoviário/aéreo/aquaviário/ferroviário/dutoviário, each with its own XSD) to
+  an unvalidated extension point — this isn't a gap introduced by this library. `CTeXmlBuilder` and
+  `ValidadorXsd` never generate or validate that fragment; the caller builds the modal-specific DOM
+  content themselves and sets it on the `TCTe` before calling `emitir`. None of the `cteModal*.xsd`
+  files are bundled or referenced anywhere in the library.
+
 ## Package layout
 
-- `net.accellog.sefaz4j.nfe` — the facade and config/result types described above.
+- `net.accellog.sefaz4j.nfe` / `net.accellog.sefaz4j.cte` — the two document-specific facades and
+  their config/result types, described above. The shared infrastructure packages below
+  (`chave`, `assinatura`, `validacao`, `webservice`, `endpoints`) live at the root and are used by both.
 - `net.accellog.sefaz4j.chave` (shared) — `ChaveAcessoCalculator`: builds the 44-digit chave de acesso (43 digits + check digit, mod-11).
 - `net.accellog.sefaz4j.nfe.xml` — `NFeXmlBuilder`: marshals a `TNFe` (JAXB) into a DOM `Document`, injecting `infNFe/@Id` and `ide/cDV`
   from the computed chave when absent.
+- `net.accellog.sefaz4j.cte.xml` — `CTeXmlBuilder`: same role for `TCTe`, injecting `infCte/@Id` and `ide/cDV`.
 - `net.accellog.sefaz4j.assinatura` (shared) — `AssinadorXml` (Apache Santuario XML signature), `CertificadoA1` (PKCS12 loading),
   `CertificadoException`.
-- `net.accellog.sefaz4j.validacao` (shared) — `ValidadorXsd`: validates a serialized XML string against the bundled `nfe_v4.00.xsd`
-  chain; `ValidacaoXsdException`.
+- `net.accellog.sefaz4j.validacao` (shared) — `ValidadorXsd`: validates a serialized XML string against the bundled `nfe_v4.00.xsd`/
+  `cte_v4.00.xsd` chains (root XSD path is a parameter); `ValidacaoXsdException`.
 - `net.accellog.sefaz4j.webservice` (shared) — `SefazHttpClient` (mutual-TLS `java.net.http.HttpClient`, with per-certificate
   `SSLContext`/`HttpClient` caching), `RespostaSefazParser`, `RespostaSefaz`, `ComunicacaoException`.
 - `net.accellog.sefaz4j.nfe.webservice` — `SoapEnvelopeBuilder`, `ReciboPoller` (polls `NFeRetAutorizacao4` while `cStat == 103`);
   NFe-specific, not shared.
-- `net.accellog.sefaz4j.endpoints` (shared) — `EndpointResolver` + `UF`/`Ambiente`, backed by `src/main/resources/endpoints/nfe-servicos.ini`.
+- `net.accellog.sefaz4j.cte.webservice` — `SoapEnvelopeBuilder` with `envelopeRecepcaoSinc(String)`; CTe-specific, not shared
+  (no `ReciboPoller` equivalent — see the CTe section above).
+- `net.accellog.sefaz4j.endpoints` (shared) — `EndpointResolver` + `UF`/`Ambiente`, backed by `src/main/resources/endpoints/nfe-servicos.ini`
+  (NFe) and `cte-servicos.ini` (CTe), selected via a path/section-prefix argument to `EndpointResolver.resolver(...)`.
 - `net.accellog.sefaz4j.nfe.endpoints` — `Servico`; NFe-specific, not shared.
+- `net.accellog.sefaz4j.cte.endpoints` — `Servico` (`CTE_RECEPCAO_SINC` — the only value in this phase); CTe-specific, not shared.
 - `net.accellog.sefaz4j.nfe.model` — **generated** JAXB classes (`TNFe`, `ObjectFactory`, etc.) — do not hand-edit, see below.
+- `net.accellog.sefaz4j.cte.model` — **generated** JAXB classes (`TCTe`, `ObjectFactory`, etc.), from `cte_v4.00.xsd` — do not hand-edit.
 
 ## Key technical facts for future sessions
 
