@@ -74,9 +74,11 @@ propagates as one of three unchecked exception types instead:
 - `net.accellog.sefaz4j.validacao` (shared) — `ValidadorXsd`: validates a serialized XML string against the bundled `nfe_v4.00.xsd`
   chain; `ValidacaoXsdException`.
 - `net.accellog.sefaz4j.webservice` (shared) — `SefazHttpClient` (mutual-TLS `java.net.http.HttpClient`, with per-certificate
-  `SSLContext`/`HttpClient` caching), `SoapEnvelopeBuilder`, `RespostaSefazParser`, `RespostaSefaz`,
-  `ReciboPoller` (polls `NFeRetAutorizacao4` while `cStat == 103`), `ComunicacaoException`.
-- `net.accellog.sefaz4j.endpoints` (shared) — `EndpointResolver` + `UF`/`Ambiente`/`Servico`, backed by `src/main/resources/endpoints/nfe-servicos.ini`.
+  `SSLContext`/`HttpClient` caching), `RespostaSefazParser`, `RespostaSefaz`, `ComunicacaoException`.
+- `net.accellog.sefaz4j.nfe.webservice` — `SoapEnvelopeBuilder`, `ReciboPoller` (polls `NFeRetAutorizacao4` while `cStat == 103`);
+  NFe-specific, not shared.
+- `net.accellog.sefaz4j.endpoints` (shared) — `EndpointResolver` + `UF`/`Ambiente`, backed by `src/main/resources/endpoints/nfe-servicos.ini`.
+- `net.accellog.sefaz4j.nfe.endpoints` — `Servico`; NFe-specific, not shared.
 - `net.accellog.sefaz4j.nfe.model` — **generated** JAXB classes (`TNFe`, `ObjectFactory`, etc.) — do not hand-edit, see below.
 
 ## Key technical facts for future sessions
