@@ -7,6 +7,7 @@ import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 
 /**
  * Monta o {@link Document} de um evento (cancelamento, carta de correção
@@ -33,7 +34,7 @@ public final class EventoXmlBuilder {
         String detEventoXmlFragmento
     ) {
         String id = "ID" + tpEvento + chNFe + String.format("%02d", nSeqEvento);
-        String dhEvento = OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+        String dhEvento = OffsetDateTime.now().truncatedTo(ChronoUnit.SECONDS).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
 
         String xml = "<evento xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"" + verEvento + "\">" +
             "<infEvento Id=\"" + id + "\">" +

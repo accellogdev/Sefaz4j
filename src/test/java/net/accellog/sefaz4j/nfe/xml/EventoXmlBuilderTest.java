@@ -5,7 +5,10 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
+import java.util.regex.Pattern;
+
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 public class EventoXmlBuilderTest {
 
@@ -50,6 +53,25 @@ public class EventoXmlBuilderTest {
         Element infEvento = (Element) documento.getElementsByTagNameNS(NFE_NS, "infEvento").item(0);
         assertEquals("ID110110" + CHAVE + "12", infEvento.getAttribute("Id"));
         assertEquals("12", textoDoFilho(infEvento, "nSeqEvento"));
+    }
+
+    @Test
+    public void formataDhEventoSemFracaoDeSegundosConforme() {
+        String detEvento = "<detEvento versao=\"1.00\"><descEvento>Cancelamento</descEvento>" +
+            "<nProt>135250000000001</nProt>" +
+            "<xJust>Justificativa de teste com quinze ou mais caracteres</xJust></detEvento>";
+
+        Document documento = EventoXmlBuilder.montar(
+            "35", "1", "12345678000195", CHAVE, "110111", 1, "1.00", detEvento
+        );
+
+        Element infEvento = (Element) documento.getElementsByTagNameNS(NFE_NS, "infEvento").item(0);
+        String dhEvento = textoDoFilho(infEvento, "dhEvento");
+
+        // Schema pattern (TDateTimeUTC): YYYY-MM-DDThh:mm:ss[+-]hh:mm (sem fração de segundos)
+        Pattern schemaPattern = Pattern.compile("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}[+-]\\d{2}:\\d{2}");
+        assertTrue("dhEvento deveria bater com pattern do schema (sem fração de segundos): " + dhEvento,
+            schemaPattern.matcher(dhEvento).matches());
     }
 
     private static String textoDoFilho(Element pai, String nomeLocal) {
