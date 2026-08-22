@@ -1,4 +1,4 @@
-package net.accellog.sefaz4j.nfe.assinatura;
+package net.accellog.sefaz4j.assinatura;
 
 import net.accellog.sefaz4j.nfe.model.ObjectFactory;
 import net.accellog.sefaz4j.nfe.model.TEnderEmi;
@@ -27,6 +27,8 @@ import static org.junit.Assert.assertEquals;
 
 public class AssinadorXmlTest {
 
+    private static final String NFE_NAMESPACE = "http://www.portalfiscal.inf.br/nfe";
+
     private static final String XML_NAO_ASSINADO =
         "<NFe xmlns=\"http://www.portalfiscal.inf.br/nfe\">" +
         "<infNFe Id=\"NFe35250812345678000195550010000001231123456789\" versao=\"4.00\">" +
@@ -42,7 +44,7 @@ public class AssinadorXmlTest {
     public void assinaEAdicionaElementoSignatureComoUltimoFilhoDeNFe() throws Exception {
         Document documento = parseDocumento(XML_NAO_ASSINADO);
 
-        AssinadorXml.assinar(documento, pfxBytes(), "teste123");
+        AssinadorXml.assinar(documento, pfxBytes(), "teste123", NFE_NAMESPACE, "infNFe");
 
         Element raizNFe = documento.getDocumentElement();
         NodeList assinaturas = raizNFe.getElementsByTagNameNS("http://www.w3.org/2000/09/xmldsig#", "Signature");
@@ -53,7 +55,7 @@ public class AssinadorXmlTest {
     @Test(expected = CertificadoException.class)
     public void rejeitaSenhaErrada() throws Exception {
         Document documento = parseDocumento(XML_NAO_ASSINADO);
-        AssinadorXml.assinar(documento, pfxBytes(), "senha-errada");
+        AssinadorXml.assinar(documento, pfxBytes(), "senha-errada", NFE_NAMESPACE, "infNFe");
     }
 
     private static final String EVENTO_NAO_ASSINADO =
@@ -73,7 +75,7 @@ public class AssinadorXmlTest {
     public void assinaEventoEAdicionaElementoSignatureComoUltimoFilhoDeEvento() throws Exception {
         Document documento = parseDocumento(EVENTO_NAO_ASSINADO);
 
-        AssinadorXml.assinarEvento(documento, pfxBytes(), "teste123");
+        AssinadorXml.assinar(documento, pfxBytes(), "teste123", NFE_NAMESPACE, "infEvento");
 
         Element raizEvento = documento.getDocumentElement();
         NodeList assinaturas = raizEvento.getElementsByTagNameNS("http://www.w3.org/2000/09/xmldsig#", "Signature");
@@ -101,7 +103,7 @@ public class AssinadorXmlTest {
     public void documentoAssinadoPorAssinadorXmlPassaNaValidacaoXsd() throws Exception {
         Document documento = NFeXmlBuilder.marcarChaveEMontarDocumento(montarNfeMinimaValida());
 
-        AssinadorXml.assinar(documento, pfxBytes(), "teste123");
+        AssinadorXml.assinar(documento, pfxBytes(), "teste123", NFE_NAMESPACE, "infNFe");
 
         String xmlAssinado = serializar(documento);
 

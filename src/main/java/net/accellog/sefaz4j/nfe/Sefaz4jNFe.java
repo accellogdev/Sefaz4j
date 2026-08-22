@@ -1,6 +1,6 @@
 package net.accellog.sefaz4j.nfe;
 
-import net.accellog.sefaz4j.nfe.assinatura.AssinadorXml;
+import net.accellog.sefaz4j.assinatura.AssinadorXml;
 import net.accellog.sefaz4j.nfe.endpoints.EndpointResolver;
 import net.accellog.sefaz4j.nfe.endpoints.Servico;
 import net.accellog.sefaz4j.nfe.model.TNFe;
@@ -39,6 +39,8 @@ public final class Sefaz4jNFe {
     private static final int TAMANHO_MINIMO_TEXTO_CORRECAO = 15;
     private static final int TAMANHO_MAXIMO_TEXTO_CORRECAO = 1000;
 
+    private static final String NFE_NAMESPACE = "http://www.portalfiscal.inf.br/nfe";
+
     private Sefaz4jNFe() {
     }
 
@@ -60,7 +62,7 @@ public final class Sefaz4jNFe {
 
         Document documento = montarDocumento(nfe);
 
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx());
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infNFe");
 
         String xmlAssinado = serializarDocumento(documento);
 
@@ -166,7 +168,7 @@ public final class Sefaz4jNFe {
             "</detEvento>";
 
         Document documento = EventoXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110111", 1, "1.00", detEvento);
-        AssinadorXml.assinarEvento(documento, config.getPfxBytes(), config.getSenhaPfx());
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infEvento");
         String xmlEventoAssinado = serializarDocumento(documento);
 
         return enviarEProcessarEvento(config, xmlEventoAssinado, "eventoCancNFe_v1.00.xsd");
@@ -198,7 +200,7 @@ public final class Sefaz4jNFe {
             "</detEvento>";
 
         Document documento = EventoXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110110", nSeqEvento, "1.00", detEvento);
-        AssinadorXml.assinarEvento(documento, config.getPfxBytes(), config.getSenhaPfx());
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infEvento");
         String xmlEventoAssinado = serializarDocumento(documento);
 
         return enviarEProcessarEvento(config, xmlEventoAssinado, "CCe_v1.00.xsd");
@@ -245,7 +247,7 @@ public final class Sefaz4jNFe {
             "</inutNFe>";
 
         Document documento = parseXmlParaDocumento(xmlInutilizacao);
-        AssinadorXml.assinarInutilizacao(documento, config.getPfxBytes(), config.getSenhaPfx());
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infInut");
         String xmlAssinado = serializarDocumento(documento);
 
         ValidadorXsd.validar(xmlAssinado, "/schemas/nfe/inutNFe_v4.00.xsd");

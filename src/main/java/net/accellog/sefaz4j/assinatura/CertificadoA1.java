@@ -1,4 +1,4 @@
-package net.accellog.sefaz4j.nfe.assinatura;
+package net.accellog.sefaz4j.assinatura;
 
 import java.io.ByteArrayInputStream;
 import java.security.KeyStore;
