@@ -97,6 +97,40 @@ public final class Sefaz4jNFe {
         return enviarEProcessar(config, xmlAssinado);
     }
 
+    public static ResultadoConsulta consultarSituacao(Sefaz4jConfig config, String chaveAcesso) {
+        String xmlConsulta = "<consSitNFe xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"4.00\">" +
+            "<tpAmb>" + config.getAmbiente().getTpAmb() + "</tpAmb>" +
+            "<xServ>CONSULTAR</xServ>" +
+            "<chNFe>" + chaveAcesso + "</chNFe>" +
+            "</consSitNFe>";
+
+        ValidadorXsd.validar(xmlConsulta, "/schemas/nfe/consSitNFe_v4.00.xsd");
+
+        String url = config.getUrlConsultaProtocoloOverride() != null
+            ? config.getUrlConsultaProtocoloOverride()
+            : EndpointResolver.resolver(config.getUf(), config.getAmbiente().paraEndpoints(), Servico.NFE_CONSULTA_PROTOCOLO);
+
+        String envelope = SoapEnvelopeBuilder.envelopeConsultaSituacao(xmlConsulta);
+        String respostaBruta = SefazHttpClient.postar(
+            url,
+            "http://www.portalfiscal.inf.br/nfe/wsdl/NFeConsultaProtocolo4/nfeConsultaNF",
+            envelope,
+            config.getPfxBytes(),
+            config.getSenhaPfx(),
+            config.getTimeout()
+        );
+
+        RespostaSefaz resposta = RespostaSefazParser.parsear(respostaBruta);
+
+        return new ResultadoConsulta(
+            "100".equals(resposta.getCStat()),
+            resposta.getCStat(),
+            resposta.getXMotivo(),
+            resposta.getChNFe(),
+            resposta.getProtocoloXml()
+        );
+    }
+
     private static ResultadoEmissao enviarEProcessar(Sefaz4jConfig config, String xmlAssinado) {
         ValidadorXsd.validar(xmlAssinado);
 

@@ -24,6 +24,7 @@ import net.accellog.sefaz4j.nfe.webservice.ComunicacaoException;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertFalse;
 
 public class Sefaz4jNFeTest {
 
@@ -244,6 +245,63 @@ public class Sefaz4jNFeTest {
         nfe.setInfNFe(infNFe);
 
         Sefaz4jNFe.emitir(config, nfe);
+    }
+
+    @Test
+    public void consultarSituacaoRetornaAutorizada() {
+        servidor.createContext("/consulta", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><nfeResultMsg xmlns=\"http://www.portalfiscal.inf.br/nfe/wsdl/NFeConsultaProtocolo4\">" +
+                "<retConsSitNFe xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"4.00\">" +
+                "<tpAmb>2</tpAmb><verAplic>SP_1.0.0</verAplic>" +
+                "<cStat>100</cStat><xMotivo>Autorizado o uso da NF-e</xMotivo>" +
+                "<cUF>35</cUF><dhRecbto>2025-08-12T10:05:00-03:00</dhRecbto>" +
+                "<chNFe>35250812345678000195550010000001231123456789</chNFe>" +
+                "<protNFe versao=\"4.00\"><infProt>" +
+                "<chNFe>35250812345678000195550010000001231123456789</chNFe>" +
+                "<cStat>100</cStat><xMotivo>Autorizado o uso da NF-e</xMotivo>" +
+                "<nProt>135250000000001</nProt>" +
+                "</infProt></protNFe>" +
+                "</retConsSitNFe></nfeResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+        config.setUrlConsultaProtocoloOverride("https://localhost:" + servidor.getAddress().getPort() + "/consulta");
+
+        ResultadoConsulta resultado = Sefaz4jNFe.consultarSituacao(config, "35250812345678000195550010000001231123456789");
+
+        assertTrue(resultado.isOk());
+        assertEquals("100", resultado.getCStat());
+        assertEquals("35250812345678000195550010000001231123456789", resultado.getChNFe());
+        assertTrue(resultado.getProtocoloXml().contains("<nProt>135250000000001</nProt>"));
+    }
+
+    @Test
+    public void consultarSituacaoRetornaNaoAutorizadaSemLancarExcecao() {
+        servidor.createContext("/consulta-inexistente", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><nfeResultMsg xmlns=\"http://www.portalfiscal.inf.br/nfe/wsdl/NFeConsultaProtocolo4\">" +
+                "<retConsSitNFe xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"4.00\">" +
+                "<tpAmb>2</tpAmb><verAplic>SP_1.0.0</verAplic>" +
+                "<cStat>217</cStat><xMotivo>NF-e não consta na base de dados da SEFAZ</xMotivo>" +
+                "<cUF>35</cUF><dhRecbto>2025-08-12T10:05:00-03:00</dhRecbto>" +
+                "<chNFe>35250812345678000195550010000001231123456789</chNFe>" +
+                "</retConsSitNFe></nfeResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+        config.setUrlConsultaProtocoloOverride("https://localhost:" + servidor.getAddress().getPort() + "/consulta-inexistente");
+
+        ResultadoConsulta resultado = Sefaz4jNFe.consultarSituacao(config, "35250812345678000195550010000001231123456789");
+
+        assertFalse(resultado.isOk());
+        assertEquals("217", resultado.getCStat());
     }
 
     private static String xmlAssinadoValido() {
