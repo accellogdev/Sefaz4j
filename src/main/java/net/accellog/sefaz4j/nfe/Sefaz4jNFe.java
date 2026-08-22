@@ -4,7 +4,7 @@ import net.accellog.sefaz4j.nfe.assinatura.AssinadorXml;
 import net.accellog.sefaz4j.nfe.endpoints.EndpointResolver;
 import net.accellog.sefaz4j.nfe.endpoints.Servico;
 import net.accellog.sefaz4j.nfe.model.TNFe;
-import net.accellog.sefaz4j.nfe.validacao.ValidadorXsd;
+import net.accellog.sefaz4j.validacao.ValidadorXsd;
 import net.accellog.sefaz4j.nfe.webservice.ComunicacaoException;
 import net.accellog.sefaz4j.nfe.webservice.ReciboPoller;
 import net.accellog.sefaz4j.nfe.webservice.RespostaSefaz;

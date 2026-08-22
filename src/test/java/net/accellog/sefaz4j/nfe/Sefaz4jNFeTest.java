@@ -19,7 +19,7 @@ import java.time.Duration;
 import net.accellog.sefaz4j.nfe.endpoints.UF;
 import net.accellog.sefaz4j.nfe.model.ObjectFactory;
 import net.accellog.sefaz4j.nfe.model.TNFe;
-import net.accellog.sefaz4j.nfe.validacao.ValidacaoXsdException;
+import net.accellog.sefaz4j.validacao.ValidacaoXsdException;
 import net.accellog.sefaz4j.nfe.webservice.ComunicacaoException;
 
 import static org.junit.Assert.assertEquals;

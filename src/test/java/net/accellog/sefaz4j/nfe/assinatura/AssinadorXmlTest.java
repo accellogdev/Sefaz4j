@@ -4,7 +4,7 @@ import net.accellog.sefaz4j.nfe.model.ObjectFactory;
 import net.accellog.sefaz4j.nfe.model.TEnderEmi;
 import net.accellog.sefaz4j.nfe.model.TNFe;
 import net.accellog.sefaz4j.nfe.model.TUfEmi;
-import net.accellog.sefaz4j.nfe.validacao.ValidadorXsd;
+import net.accellog.sefaz4j.validacao.ValidadorXsd;
 import net.accellog.sefaz4j.nfe.xml.NFeXmlBuilder;
 import org.junit.Test;
 import org.w3c.dom.Document;

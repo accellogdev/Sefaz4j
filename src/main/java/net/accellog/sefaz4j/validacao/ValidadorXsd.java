@@ -1,4 +1,4 @@
-package net.accellog.sefaz4j.nfe.validacao;
+package net.accellog.sefaz4j.validacao;
 
 import org.xml.sax.SAXException;
 import org.xml.sax.SAXParseException;
