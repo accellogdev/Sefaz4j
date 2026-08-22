@@ -35,11 +35,20 @@ Everything a consumer needs lives in the top-level package `net.accellog.sefaz4j
 - **`Sefaz4jNFe`** — the facade. `emitir(Sefaz4jConfig, TNFe)` builds the chave de acesso, signs, XSD-validates,
   transmits, and (if the lot is still processing) polls `NFeRetAutorizacao4`, returning a `ResultadoEmissao`.
   `enviarXmlAssinado(Sefaz4jConfig, String)` skips straight to validate+transmit for an already-signed XML.
+  `consultarSituacao(Sefaz4jConfig, String chaveAcesso)` consulta o status de uma NFe já
+  transmitida, sem assinar nada. `cancelar(Sefaz4jConfig, String chaveAcesso, String nProt, String justificativa)`
+  e `corrigirCartaDeCorrecao(Sefaz4jConfig, String chaveAcesso, String textoCorrecao[, int nSeqEvento])`
+  montam e assinam um evento (`infEvento`, não `infNFe`) e o enviam a `RecepcaoEvento4`.
+  `inutilizar(Sefaz4jConfig, String cUF, String ano, String cnpj, String serie, String nNFIni, String nNFFin, String justificativa)`
+  inutiliza uma faixa de numeração não usada — não depende de uma NFe específica.
 - **`Sefaz4jConfig`** — UF, `Ambiente`, PFX bytes + password, optional URL overrides
   (`urlAutorizacaoOverride` via constructor, `setUrlRetAutorizacaoOverride` fluently — mainly for tests/proxies),
   and fluent setters for `timeout`/`maxTentativasPolling`/`intervaloPolling` (defaults: 30s, 5, 5s).
 - **`ResultadoEmissao`** — `isOk()` is `true` **only** when SEFAZ's returned `cStat` is `100`; `getXmlAutorizado()`
   is a single well-formed XML document (wrapped in `<nfeProc>` when a protocol/`protNFe` is present).
+- **`ResultadoConsulta`/`ResultadoEvento`/`ResultadoInutilizacao`** — mesmo formato de `ResultadoEmissao`
+  (`ok` estrito para o `cStat` de sucesso específico da operação — 100/135/102 respectivamente —, `cStat`/
+  `xMotivo` sempre preenchidos para o chamador inspecionar qualquer outro código).
 - **`Ambiente`** — `PRODUCAO`/`HOMOLOGACAO`, carries the numeric `tpAmb`.
 
 ### Error contract
@@ -98,6 +107,15 @@ propagates as one of three unchecked exception types instead:
   default ships the renamed `org.kohsuke.rngom.*` instead). Don't remove or downgrade these without
   re-verifying a full clean `mvn package` (delete `target/generated-sources` first — a stale generated
   model masks the failure).
+- **Consulta/evento/inutilização não usam JAXB.** Os XSDs oficiais de evento
+  (`leiauteEventoCancNFe_v1.00.xsd`, `leiauteCCe_v1.00.xsd`) e de consulta (`leiauteConsSitNFe_v4.00.xsd`)
+  cada um redefine seu próprio `TEvento`/`TRetEvento`/`TProcEvento` no mesmo target namespace — incluir
+  mais de uma dessas cadeias na mesma execução do `maven-jaxb2-plugin` quebra o XJC com tipo duplicado.
+  Por isso `consultarSituacao`/`cancelar`/`corrigirCartaDeCorrecao`/`inutilizar` constroem e leem XML à
+  mão (mesmo estilo de `SoapEnvelopeBuilder`/`RespostaSefazParser`), nunca via JAXB — `AssinadorXml` e
+  `ValidadorXsd` foram generalizados (nome do elemento a assinar / caminho do XSD raiz como parâmetro)
+  em vez de duplicados. Os XSDs correspondentes em `src/main/resources/schemas/nfe/` são só para
+  `ValidadorXsd`, nunca aparecem no `schemaIncludes` do plugin JAXB.
 
 ## Release / CI
 
