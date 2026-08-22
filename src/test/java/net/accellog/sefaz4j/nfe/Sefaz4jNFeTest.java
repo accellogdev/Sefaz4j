@@ -353,6 +353,54 @@ public class Sefaz4jNFeTest {
         );
     }
 
+    @Test
+    public void corrigirCartaDeCorrecaoRetornaEventoRegistrado() {
+        servidor.createContext("/evento-cce", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><nfeResultMsg xmlns=\"http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4\">" +
+                "<retEnvEvento xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"1.00\">" +
+                "<idLote>1</idLote><tpAmb>2</tpAmb><verAplic>SP_1.0.0</verAplic><cOrgao>35</cOrgao>" +
+                "<cStat>128</cStat><xMotivo>Lote de evento processado</xMotivo>" +
+                "<retEvento versao=\"1.00\"><infEvento>" +
+                "<tpAmb>2</tpAmb><verAplic>SP_1.0.0</verAplic><cOrgao>35</cOrgao>" +
+                "<cStat>135</cStat><xMotivo>Evento registrado e vinculado a NF-e</xMotivo>" +
+                "<chNFe>35250812345678000195550010000001231123456789</chNFe>" +
+                "<tpEvento>110110</tpEvento><xEvento>Carta de Correção</xEvento><nSeqEvento>1</nSeqEvento>" +
+                "<dhRegEvento>2025-08-12T10:12:00-03:00</dhRegEvento>" +
+                "<nProt>135250000000003</nProt>" +
+                "</infEvento></retEvento>" +
+                "</retEnvEvento></nfeResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+        config.setUrlRecepcaoEventoOverride("https://localhost:" + servidor.getAddress().getPort() + "/evento-cce");
+
+        ResultadoEvento resultado = Sefaz4jNFe.corrigirCartaDeCorrecao(
+            config,
+            "35250812345678000195550010000001231123456789",
+            "Correção de teste com quinze ou mais caracteres para descrever o erro cadastral corrigido"
+        );
+
+        assertTrue(resultado.isOk());
+        assertEquals("135", resultado.getCStat());
+        assertEquals("135250000000003", resultado.getNProt());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void corrigirCartaDeCorrecaoRejeitaTextoCurto() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jNFe.corrigirCartaDeCorrecao(
+            config,
+            "35250812345678000195550010000001231123456789",
+            "curta",
+            2
+        );
+    }
+
     private static String xmlAssinadoValido() {
         return "<NFe xmlns=\"http://www.portalfiscal.inf.br/nfe\">" +
             "<infNFe Id=\"NFe35250812345678000195550010000001231123456789\" versao=\"4.00\">" +

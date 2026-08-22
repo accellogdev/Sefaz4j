@@ -153,6 +153,37 @@ public final class Sefaz4jNFe {
         return enviarEProcessarEvento(config, xmlEventoAssinado, "eventoCancNFe_v1.00.xsd");
     }
 
+    private static final String X_COND_USO_CCE =
+        "A Carta de Correção é disciplinada pelo § 1º-A do art. 7º do Convênio S/N, de 15 de dezembro de 1970 " +
+        "e pode ser utilizada para regularização de erro ocorrido na emissão de documento fiscal, desde que o " +
+        "erro não esteja relacionado com: I - as variáveis que determinam o valor do imposto tais como: base " +
+        "de cálculo, alíquota, diferença de preço, quantidade, valor da operação ou da prestação; II - a " +
+        "correção de dados cadastrais que implique mudança do remetente ou do destinatário; III - a data de " +
+        "emissão ou de saída.";
+
+    public static ResultadoEvento corrigirCartaDeCorrecao(Sefaz4jConfig config, String chaveAcesso, String textoCorrecao) {
+        return corrigirCartaDeCorrecao(config, chaveAcesso, textoCorrecao, 1);
+    }
+
+    public static ResultadoEvento corrigirCartaDeCorrecao(Sefaz4jConfig config, String chaveAcesso, String textoCorrecao, int nSeqEvento) {
+        exigirTamanhoMinimo(textoCorrecao, 15, "texto de correção da CC-e");
+
+        String cUF = chaveAcesso.substring(0, 2);
+        String cnpj = chaveAcesso.substring(6, 20);
+
+        String detEvento = "<detEvento versao=\"1.00\">" +
+            "<descEvento>Carta de Correção</descEvento>" +
+            "<xCorrecao>" + escaparTextoXml(textoCorrecao) + "</xCorrecao>" +
+            "<xCondUso>" + escaparTextoXml(X_COND_USO_CCE) + "</xCondUso>" +
+            "</detEvento>";
+
+        Document documento = EventoXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110110", nSeqEvento, "1.00", detEvento);
+        AssinadorXml.assinarEvento(documento, config.getPfxBytes(), config.getSenhaPfx());
+        String xmlEventoAssinado = serializarDocumento(documento);
+
+        return enviarEProcessarEvento(config, xmlEventoAssinado, "CCe_v1.00.xsd");
+    }
+
     private static void exigirTamanhoMinimo(String texto, int tamanhoMinimo, String nomeCampo) {
         if (texto == null || texto.length() < tamanhoMinimo) {
             throw new IllegalArgumentException(
