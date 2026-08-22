@@ -103,22 +103,36 @@
 				</dependencies>
 				<executions>
 					<execution>
+						<id>xjc-nfe</id>
 						<goals>
 							<goal>generate</goal>
 						</goals>
+						<configuration>
+							<schemaDirectory>src/main/resources/schemas/nfe</schemaDirectory>
+							<schemaIncludes>
+								<schemaInclude>nfe_v4.00.xsd</schemaInclude>
+								<schemaInclude>enviNFe_v4.00.xsd</schemaInclude>
+								<schemaInclude>retEnviNFe_v4.00.xsd</schemaInclude>
+								<schemaInclude>consReciNFe_v4.00.xsd</schemaInclude>
+								<schemaInclude>retConsReciNFe_v4.00.xsd</schemaInclude>
+							</schemaIncludes>
+							<generatePackage>net.accellog.sefaz4j.nfe.model</generatePackage>
+						</configuration>
+					</execution>
+					<execution>
+						<id>xjc-cte</id>
+						<goals>
+							<goal>generate</goal>
+						</goals>
+						<configuration>
+							<schemaDirectory>src/main/resources/schemas/cte</schemaDirectory>
+							<schemaIncludes>
+								<schemaInclude>cte_v4.00.xsd</schemaInclude>
+							</schemaIncludes>
+							<generatePackage>net.accellog.sefaz4j.cte.model</generatePackage>
+						</configuration>
 					</execution>
 				</executions>
-				<configuration>
-					<schemaDirectory>src/main/resources/schemas/nfe</schemaDirectory>
-					<schemaIncludes>
-						<schemaInclude>nfe_v4.00.xsd</schemaInclude>
-						<schemaInclude>enviNFe_v4.00.xsd</schemaInclude>
-						<schemaInclude>retEnviNFe_v4.00.xsd</schemaInclude>
-						<schemaInclude>consReciNFe_v4.00.xsd</schemaInclude>
-						<schemaInclude>retConsReciNFe_v4.00.xsd</schemaInclude>
-					</schemaIncludes>
-					<generatePackage>net.accellog.sefaz4j.nfe.model</generatePackage>
-				</configuration>
 			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
