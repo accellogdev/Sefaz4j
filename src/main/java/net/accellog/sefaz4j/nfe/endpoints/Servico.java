@@ -4,7 +4,8 @@ public enum Servico {
     NFE_AUTORIZACAO("NfeAutorizacao_4.00"),
     NFE_RET_AUTORIZACAO("NfeRetAutorizacao_4.00"),
     NFE_CONSULTA_PROTOCOLO("NfeConsultaProtocolo_4.00"),
-    RECEPCAO_EVENTO("RecepcaoEvento_4.00");
+    RECEPCAO_EVENTO("RecepcaoEvento_4.00"),
+    NFE_INUTILIZACAO("NfeInutilizacao_4.00");
 
     private final String chaveIni;
 

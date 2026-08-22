@@ -13,6 +13,7 @@ public final class Sefaz4jConfig {
     private String urlRetAutorizacaoOverride;
     private String urlConsultaProtocoloOverride;
     private String urlRecepcaoEventoOverride;
+    private String urlInutilizacaoOverride;
     private Duration timeout = Duration.ofSeconds(30);
     private int maxTentativasPolling = 5;
     private Duration intervaloPolling = Duration.ofSeconds(5);
@@ -94,6 +95,22 @@ public final class Sefaz4jConfig {
      */
     public Sefaz4jConfig setUrlRecepcaoEventoOverride(String urlRecepcaoEventoOverride) {
         this.urlRecepcaoEventoOverride = urlRecepcaoEventoOverride;
+        return this;
+    }
+
+    public String getUrlInutilizacaoOverride() {
+        return urlInutilizacaoOverride;
+    }
+
+    /**
+     * Sobrescreve a URL do serviço NfeInutilizacao4 (por padrão resolvida
+     * via {@code EndpointResolver}/{@code nfe-servicos.ini} a partir de
+     * UF+Ambiente), simetricamente aos demais overrides de URL já
+     * existentes. Útil para testes e para ambientes com um proxy/gateway
+     * próprio na frente da SEFAZ.
+     */
+    public Sefaz4jConfig setUrlInutilizacaoOverride(String urlInutilizacaoOverride) {
+        this.urlInutilizacaoOverride = urlInutilizacaoOverride;
         return this;
     }
 

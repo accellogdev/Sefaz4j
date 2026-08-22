@@ -54,4 +54,16 @@ public class SoapEnvelopeBuilderTest {
         assertTrue(envelope.contains("<idLote>1</idLote>"));
         assertTrue(envelope.contains(eventoAssinado));
     }
+
+    @Test
+    public void envelopeInutilizacaoEmbutteInutNFeAssinado() {
+        String inutNFeAssinado = "<inutNFe xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"4.00\">" +
+            "<infInut Id=\"ID1\"></infInut></inutNFe>";
+
+        String envelope = SoapEnvelopeBuilder.envelopeInutilizacao(inutNFeAssinado);
+
+        assertTrue(envelope.contains("<soap12:Envelope"));
+        assertTrue(envelope.contains("xmlns=\"http://www.portalfiscal.inf.br/nfe/wsdl/NFeInutilizacao4\""));
+        assertTrue(envelope.contains(inutNFeAssinado));
+    }
 }
