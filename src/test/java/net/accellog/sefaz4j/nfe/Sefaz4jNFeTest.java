@@ -401,6 +401,57 @@ public class Sefaz4jNFeTest {
         );
     }
 
+    @Test
+    public void inutilizarRetornaHomologado() {
+        servidor.createContext("/inutilizacao", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><nfeResultMsg xmlns=\"http://www.portalfiscal.inf.br/nfe/wsdl/NFeInutilizacao4\">" +
+                "<retInutNFe xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"4.00\">" +
+                "<infInut Id=\"ID35" + "25" + "12345678000195" + "55" + "001" + "000000123" + "000000124\">" +
+                "<tpAmb>2</tpAmb><verAplic>SP_1.0.0</verAplic>" +
+                "<cStat>102</cStat><xMotivo>Inutilização de número homologado</xMotivo>" +
+                "<cUF>35</cUF><ano>25</ano><CNPJ>12345678000195</CNPJ><mod>55</mod><serie>001</serie>" +
+                "<nNFIni>000000123</nNFIni><nNFFin>000000124</nNFFin>" +
+                "<dhRecbto>2025-08-12T10:15:00-03:00</dhRecbto>" +
+                "<nProt>135250000000004</nProt>" +
+                "</infInut>" +
+                "</retInutNFe></nfeResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+        config.setUrlInutilizacaoOverride("https://localhost:" + servidor.getAddress().getPort() + "/inutilizacao");
+
+        ResultadoInutilizacao resultado = Sefaz4jNFe.inutilizar(
+            config, "35", "25", "12345678000195", "1", "123", "124",
+            "Justificativa de teste com quinze ou mais caracteres"
+        );
+
+        assertTrue(resultado.isOk());
+        assertEquals("102", resultado.getCStat());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void inutilizarRejeitaJustificativaCurta() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jNFe.inutilizar(config, "35", "25", "12345678000195", "1", "123", "124", "curta");
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void inutilizarRejeitaCamposComTamanhoErrado() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        // nNFIni com 10 dígitos (formato natural, sem zero à esquerda) excede a largura de 9
+        // reservada para o Id — concatenação não bate em 41 dígitos.
+        Sefaz4jNFe.inutilizar(
+            config, "35", "25", "12345678000195", "1", "1234567890", "124",
+            "Justificativa de teste com quinze ou mais caracteres"
+        );
+    }
+
     private static String xmlAssinadoValido() {
         return "<NFe xmlns=\"http://www.portalfiscal.inf.br/nfe\">" +
             "<infNFe Id=\"NFe35250812345678000195550010000001231123456789\" versao=\"4.00\">" +

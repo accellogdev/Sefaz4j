@@ -184,6 +184,104 @@ public final class Sefaz4jNFe {
         return enviarEProcessarEvento(config, xmlEventoAssinado, "CCe_v1.00.xsd");
     }
 
+    public static ResultadoInutilizacao inutilizar(
+        Sefaz4jConfig config,
+        String cUF,
+        String ano,
+        String cnpj,
+        String serie,
+        String nNFIni,
+        String nNFFin,
+        String justificativa
+    ) {
+        exigirTamanhoMinimo(justificativa, TAMANHO_MINIMO_JUSTIFICATIVA, "justificativa da inutilização");
+
+        String serieParaId = padEsquerdaComZeros(serie, 3);
+        String nNFIniParaId = padEsquerdaComZeros(nNFIni, 9);
+        String nNFFinParaId = padEsquerdaComZeros(nNFFin, 9);
+
+        String idNumerico = cUF + ano + cnpj + "55" + serieParaId + nNFIniParaId + nNFFinParaId;
+        if (idNumerico.length() != 41 || !idNumerico.matches("[0-9]{41}")) {
+            throw new IllegalArgumentException(
+                "A concatenação cUF+ano+CNPJ+mod+serie+nNFIni+nNFFin (serie/nNFIni/nNFFin completados "
+                    + "com zeros à esquerda só para o Id) deve ter 41 dígitos numéricos (2+2+14+2+3+9+9), "
+                    + "obteve " + idNumerico.length() + ": '" + idNumerico + "'"
+            );
+        }
+
+        String xmlInutilizacao = "<inutNFe xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"4.00\">" +
+            "<infInut Id=\"ID" + idNumerico + "\">" +
+            "<tpAmb>" + config.getAmbiente().getTpAmb() + "</tpAmb>" +
+            "<xServ>INUTILIZAR</xServ>" +
+            "<cUF>" + cUF + "</cUF>" +
+            "<ano>" + ano + "</ano>" +
+            "<CNPJ>" + cnpj + "</CNPJ>" +
+            "<mod>55</mod>" +
+            "<serie>" + serie + "</serie>" +
+            "<nNFIni>" + nNFIni + "</nNFIni>" +
+            "<nNFFin>" + nNFFin + "</nNFFin>" +
+            "<xJust>" + escaparTextoXml(justificativa) + "</xJust>" +
+            "</infInut>" +
+            "</inutNFe>";
+
+        Document documento = parseXmlParaDocumento(xmlInutilizacao);
+        AssinadorXml.assinarInutilizacao(documento, config.getPfxBytes(), config.getSenhaPfx());
+        String xmlAssinado = serializarDocumento(documento);
+
+        ValidadorXsd.validar(xmlAssinado, "/schemas/nfe/inutNFe_v4.00.xsd");
+
+        String url = config.getUrlInutilizacaoOverride() != null
+            ? config.getUrlInutilizacaoOverride()
+            : EndpointResolver.resolver(config.getUf(), config.getAmbiente().paraEndpoints(), Servico.NFE_INUTILIZACAO);
+
+        String envelope = SoapEnvelopeBuilder.envelopeInutilizacao(xmlAssinado);
+        String respostaBruta = SefazHttpClient.postar(
+            url,
+            "http://www.portalfiscal.inf.br/nfe/wsdl/NFeInutilizacao4/nfeInutilizacaoNF",
+            envelope,
+            config.getPfxBytes(),
+            config.getSenhaPfx(),
+            config.getTimeout()
+        );
+
+        RespostaSefaz resposta = RespostaSefazParser.parsear(respostaBruta, "infInut");
+
+        return new ResultadoInutilizacao(
+            "102".equals(resposta.getCStat()),
+            resposta.getCStat(),
+            resposta.getXMotivo(),
+            resposta.getProtocoloXml()
+        );
+    }
+
+    // Completa com zeros à esquerda só para compor o atributo Id de infInut (que exige largura
+    // fixa) — nunca usado para o conteúdo dos elementos serie/nNFIni/nNFFin em si, que o schema
+    // (TSerie/TNF) proíbe ter zero à esquerda.
+    private static String padEsquerdaComZeros(String valor, int tamanho) {
+        StringBuilder sb = new StringBuilder(valor);
+        while (sb.length() < tamanho) {
+            sb.insert(0, '0');
+        }
+        return sb.toString();
+    }
+
+    // xmlSemAssinatura é montado por concatenação de string por esta
+    // própria classe (não é entrada remota) — sem necessidade do
+    // hardening XXE aplicado a criarDocumentBuilderSeguro (que trata
+    // resposta HTTP da SEFAZ). Mesmo padrão que EventoXmlBuilder já usa
+    // internamente para o mesmo tipo de parse.
+    private static Document parseXmlParaDocumento(String xmlSemAssinatura) {
+        try {
+            javax.xml.parsers.DocumentBuilderFactory dbf = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+            dbf.setNamespaceAware(true);
+            return dbf.newDocumentBuilder().parse(
+                new ByteArrayInputStream(xmlSemAssinatura.getBytes(StandardCharsets.UTF_8))
+            );
+        } catch (Exception e) {
+            throw new IllegalStateException("Falha ao montar o documento XML de inutilização", e);
+        }
+    }
+
     private static void exigirTamanhoMinimo(String texto, int tamanhoMinimo, String nomeCampo) {
         if (texto == null || texto.length() < tamanhoMinimo) {
             throw new IllegalArgumentException(
