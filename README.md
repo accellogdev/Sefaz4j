@@ -68,11 +68,11 @@ instalar o jar no `~/.m2` local, com a mesma dependência acima.
 ## Uso rápido
 
 ```java
-import net.accellog.sefaz4j.nfe.Ambiente;
+import net.accellog.sefaz4j.endpoints.Ambiente;
 import net.accellog.sefaz4j.nfe.ResultadoEmissao;
 import net.accellog.sefaz4j.nfe.Sefaz4jConfig;
 import net.accellog.sefaz4j.nfe.Sefaz4jNFe;
-import net.accellog.sefaz4j.nfe.endpoints.UF;
+import net.accellog.sefaz4j.endpoints.UF;
 import net.accellog.sefaz4j.nfe.model.ObjectFactory;
 import net.accellog.sefaz4j.nfe.model.TNFe;
 
