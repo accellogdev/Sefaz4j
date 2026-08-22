@@ -41,4 +41,17 @@ public class SoapEnvelopeBuilderTest {
         assertTrue(envelope.contains("xmlns=\"http://www.portalfiscal.inf.br/nfe/wsdl/NFeConsultaProtocolo4\""));
         assertTrue(envelope.contains(consSitNFeXml));
     }
+
+    @Test
+    public void envelopeRecepcaoEventoContemIdLoteEEventoAssinadoEmbutido() {
+        String eventoAssinado = "<evento xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"1.00\">" +
+            "<infEvento Id=\"ID1\"></infEvento></evento>";
+
+        String envelope = SoapEnvelopeBuilder.envelopeRecepcaoEvento(eventoAssinado, 1L);
+
+        assertTrue(envelope.contains("<soap12:Envelope"));
+        assertTrue(envelope.contains("xmlns=\"http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4\""));
+        assertTrue(envelope.contains("<idLote>1</idLote>"));
+        assertTrue(envelope.contains(eventoAssinado));
+    }
 }

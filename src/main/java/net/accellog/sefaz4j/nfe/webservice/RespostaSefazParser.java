@@ -21,6 +21,10 @@ public final class RespostaSefazParser {
     }
 
     public static RespostaSefaz parsear(String respostaXml) {
+        return parsear(respostaXml, "protNFe");
+    }
+
+    public static RespostaSefaz parsear(String respostaXml, String nomeElementoProtocolo) {
         try {
             // respostaXml é a resposta HTTP crua da SEFAZ (entrada remota) —
             // desabilita DOCTYPE/entidades externas para não expor a
@@ -40,8 +44,8 @@ public final class RespostaSefazParser {
             String nRec = textoDoPrimeiro(documento, "nRec");
             String chNFe = textoDoPrimeiro(documento, "chNFe");
 
-            NodeList protNFeList = documento.getElementsByTagNameNS("*", "protNFe");
-            String protocoloXml = protNFeList.getLength() > 0 ? serializar((Element) protNFeList.item(0)) : null;
+            NodeList protocoloList = documento.getElementsByTagNameNS("*", nomeElementoProtocolo);
+            String protocoloXml = protocoloList.getLength() > 0 ? serializar((Element) protocoloList.item(0)) : null;
 
             return new RespostaSefaz(cStat, xMotivo, nRec, chNFe, protocoloXml);
         } catch (Exception e) {
