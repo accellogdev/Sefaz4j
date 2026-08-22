@@ -158,6 +158,19 @@
 							<excludes>
 								<exclude>none</exclude>
 							</excludes>
+							<!-- Surefire's default includes (**/Test*.java, **/*Test.java, **/*Tests.java,
+							     **/*TestCase.java) don't match every class under **/integration/** (e.g.
+							     HomologacaoIntegrationTestCTe.java ends in "TestCTe", not "Test") — without
+							     this, resetting excludes to "none" above isn't enough, such a class is simply
+							     never picked up at all (not run, not skipped). Keep the standard patterns for
+							     everything else and additionally include the whole integration package by path. -->
+							<includes>
+								<include>**/Test*.java</include>
+								<include>**/*Test.java</include>
+								<include>**/*Tests.java</include>
+								<include>**/*TestCase.java</include>
+								<include>**/integration/**/*.java</include>
+							</includes>
 						</configuration>
 					</plugin>
 				</plugins>
