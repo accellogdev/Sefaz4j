@@ -1,4 +1,4 @@
-package net.accellog.sefaz4j.nfe.webservice;
+package net.accellog.sefaz4j.webservice;
 
 import com.sun.net.httpserver.HttpsConfigurator;
 import com.sun.net.httpserver.HttpsServer;

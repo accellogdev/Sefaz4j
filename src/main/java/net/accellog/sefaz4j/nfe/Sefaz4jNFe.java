@@ -5,12 +5,12 @@ import net.accellog.sefaz4j.nfe.endpoints.EndpointResolver;
 import net.accellog.sefaz4j.nfe.endpoints.Servico;
 import net.accellog.sefaz4j.nfe.model.TNFe;
 import net.accellog.sefaz4j.validacao.ValidadorXsd;
-import net.accellog.sefaz4j.nfe.webservice.ComunicacaoException;
 import net.accellog.sefaz4j.nfe.webservice.ReciboPoller;
-import net.accellog.sefaz4j.nfe.webservice.RespostaSefaz;
-import net.accellog.sefaz4j.nfe.webservice.RespostaSefazParser;
-import net.accellog.sefaz4j.nfe.webservice.SefazHttpClient;
 import net.accellog.sefaz4j.nfe.webservice.SoapEnvelopeBuilder;
+import net.accellog.sefaz4j.webservice.ComunicacaoException;
+import net.accellog.sefaz4j.webservice.RespostaSefaz;
+import net.accellog.sefaz4j.webservice.RespostaSefazParser;
+import net.accellog.sefaz4j.webservice.SefazHttpClient;
 import net.accellog.sefaz4j.nfe.xml.EventoXmlBuilder;
 import net.accellog.sefaz4j.nfe.xml.NFeXmlBuilder;
 import org.w3c.dom.Document;
@@ -139,7 +139,7 @@ public final class Sefaz4jNFe {
             "100".equals(resposta.getCStat()),
             resposta.getCStat(),
             resposta.getXMotivo(),
-            resposta.getChNFe(),
+            resposta.getChaveDocumento(),
             resposta.getProtocoloXml()
         );
     }
@@ -444,7 +444,7 @@ public final class Sefaz4jNFe {
             ? "<nfeProc versao=\"4.00\" xmlns=\"http://www.portalfiscal.inf.br/nfe\">" + xmlAssinado + protocoloXml + "</nfeProc>"
             : xmlAssinado;
 
-        return new ResultadoEmissao(autorizado, cStatFinal, xMotivoFinal, resposta.getChNFe(), xmlFinal);
+        return new ResultadoEmissao(autorizado, cStatFinal, xMotivoFinal, resposta.getChaveDocumento(), xmlFinal);
     }
 
     private static String extrairTextoDoElemento(String xmlFragmento, String nomeLocalElemento) {

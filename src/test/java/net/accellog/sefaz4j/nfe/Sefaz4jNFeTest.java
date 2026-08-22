@@ -20,7 +20,7 @@ import net.accellog.sefaz4j.nfe.endpoints.UF;
 import net.accellog.sefaz4j.nfe.model.ObjectFactory;
 import net.accellog.sefaz4j.nfe.model.TNFe;
 import net.accellog.sefaz4j.validacao.ValidacaoXsdException;
-import net.accellog.sefaz4j.nfe.webservice.ComunicacaoException;
+import net.accellog.sefaz4j.webservice.ComunicacaoException;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;

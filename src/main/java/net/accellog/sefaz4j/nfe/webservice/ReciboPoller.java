@@ -1,5 +1,9 @@
 package net.accellog.sefaz4j.nfe.webservice;
 
+import net.accellog.sefaz4j.webservice.RespostaSefaz;
+import net.accellog.sefaz4j.webservice.RespostaSefazParser;
+import net.accellog.sefaz4j.webservice.SefazHttpClient;
+
 import java.time.Duration;
 import java.util.function.Supplier;
 

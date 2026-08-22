@@ -1,4 +1,4 @@
-package net.accellog.sefaz4j.nfe.webservice;
+package net.accellog.sefaz4j.webservice;
 
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
@@ -25,7 +25,7 @@ public class RespostaSefazParserTest {
 
         assertEquals("104", resposta.getCStat());
         assertEquals("Lote processado", resposta.getXMotivo());
-        assertEquals("35250812345678000195550010000001231123456789", resposta.getChNFe());
+        assertEquals("35250812345678000195550010000001231123456789", resposta.getChaveDocumento());
         assertNotNull(resposta.getProtocoloXml());
         assertTrue(resposta.getProtocoloXml().contains("<nProt>135250000000001</nProt>"));
         assertNull(resposta.getNRec());

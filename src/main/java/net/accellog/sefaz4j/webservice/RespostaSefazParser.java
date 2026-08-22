@@ -1,4 +1,4 @@
-package net.accellog.sefaz4j.nfe.webservice;
+package net.accellog.sefaz4j.webservice;
 
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -21,10 +21,14 @@ public final class RespostaSefazParser {
     }
 
     public static RespostaSefaz parsear(String respostaXml) {
-        return parsear(respostaXml, "protNFe");
+        return parsear(respostaXml, "protNFe", "chNFe");
     }
 
     public static RespostaSefaz parsear(String respostaXml, String nomeElementoProtocolo) {
+        return parsear(respostaXml, nomeElementoProtocolo, "chNFe");
+    }
+
+    public static RespostaSefaz parsear(String respostaXml, String nomeElementoProtocolo, String nomeElementoChave) {
         try {
             // respostaXml é a resposta HTTP crua da SEFAZ (entrada remota) —
             // desabilita DOCTYPE/entidades externas para não expor a
@@ -42,12 +46,12 @@ public final class RespostaSefazParser {
             String cStat = textoDoPrimeiro(documento, "cStat");
             String xMotivo = textoDoPrimeiro(documento, "xMotivo");
             String nRec = textoDoPrimeiro(documento, "nRec");
-            String chNFe = textoDoPrimeiro(documento, "chNFe");
+            String chaveDocumento = textoDoPrimeiro(documento, nomeElementoChave);
 
             NodeList protocoloList = documento.getElementsByTagNameNS("*", nomeElementoProtocolo);
             String protocoloXml = protocoloList.getLength() > 0 ? serializar((Element) protocoloList.item(0)) : null;
 
-            return new RespostaSefaz(cStat, xMotivo, nRec, chNFe, protocoloXml);
+            return new RespostaSefaz(cStat, xMotivo, nRec, chaveDocumento, protocoloXml);
         } catch (Exception e) {
             throw new ComunicacaoException("Falha ao interpretar a resposta da SEFAZ", e);
         }

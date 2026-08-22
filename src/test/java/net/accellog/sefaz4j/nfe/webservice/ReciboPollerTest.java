@@ -1,5 +1,7 @@
 package net.accellog.sefaz4j.nfe.webservice;
 
+import net.accellog.sefaz4j.webservice.RespostaSefaz;
+
 import org.junit.Test;
 import java.time.Duration;
 import java.util.List;

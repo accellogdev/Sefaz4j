@@ -1,4 +1,4 @@
-package net.accellog.sefaz4j.nfe.webservice;
+package net.accellog.sefaz4j.webservice;
 
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;

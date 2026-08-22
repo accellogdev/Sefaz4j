@@ -1,17 +1,17 @@
-package net.accellog.sefaz4j.nfe.webservice;
+package net.accellog.sefaz4j.webservice;
 
 public final class RespostaSefaz {
     private final String cStat;
     private final String xMotivo;
     private final String nRec;
-    private final String chNFe;
+    private final String chaveDocumento;
     private final String protocoloXml;
 
-    public RespostaSefaz(String cStat, String xMotivo, String nRec, String chNFe, String protocoloXml) {
+    public RespostaSefaz(String cStat, String xMotivo, String nRec, String chaveDocumento, String protocoloXml) {
         this.cStat = cStat;
         this.xMotivo = xMotivo;
         this.nRec = nRec;
-        this.chNFe = chNFe;
+        this.chaveDocumento = chaveDocumento;
         this.protocoloXml = protocoloXml;
     }
 
@@ -27,8 +27,8 @@ public final class RespostaSefaz {
         return nRec;
     }
 
-    public String getChNFe() {
-        return chNFe;
+    public String getChaveDocumento() {
+        return chaveDocumento;
     }
 
     public String getProtocoloXml() {
