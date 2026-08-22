@@ -35,6 +35,13 @@ public final class Sefaz4jCTe {
     }
 
     public static ResultadoEmissao emitir(Sefaz4jConfig config, TCTe cte) {
+        // Mesma proteção de Sefaz4jNFe.emitir: emitir um documento cujo
+        // ide/tpAmb diverge do Ambiente configurado é um erro de uso grave
+        // (um CT-e de homologação enviado ao endpoint de produção, ou o
+        // inverso), então falha cedo — antes de montar, assinar ou transmitir
+        // qualquer coisa.
+        verificarTpAmbCompativel(config, cte);
+
         Document documento = montarDocumento(cte);
 
         AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), CTE_NAMESPACE, "infCte");
@@ -46,6 +53,23 @@ public final class Sefaz4jCTe {
 
     public static ResultadoEmissao enviarXmlAssinado(Sefaz4jConfig config, String xmlAssinado) {
         return enviarEProcessar(config, xmlAssinado);
+    }
+
+    private static void verificarTpAmbCompativel(Sefaz4jConfig config, TCTe cte) {
+        if (cte.getInfCte() == null || cte.getInfCte().getIde() == null) {
+            return;
+        }
+        String tpAmbIde = cte.getInfCte().getIde().getTpAmb();
+        if (tpAmbIde == null || tpAmbIde.isEmpty()) {
+            return;
+        }
+        String tpAmbEsperado = String.valueOf(config.getAmbiente().getTpAmb());
+        if (!tpAmbEsperado.equals(tpAmbIde)) {
+            throw new IllegalArgumentException(
+                "ide.tpAmb (" + tpAmbIde + ") não corresponde ao Ambiente configurado ("
+                    + config.getAmbiente() + ", tpAmb=" + tpAmbEsperado + ")"
+            );
+        }
     }
 
     private static Document montarDocumento(TCTe cte) {
