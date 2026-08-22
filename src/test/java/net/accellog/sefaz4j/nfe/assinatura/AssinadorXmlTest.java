@@ -56,6 +56,31 @@ public class AssinadorXmlTest {
         AssinadorXml.assinar(documento, pfxBytes(), "senha-errada");
     }
 
+    private static final String EVENTO_NAO_ASSINADO =
+        "<evento xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"1.00\">" +
+        "<infEvento Id=\"ID11011135250812345678000195550010000001231123456789" + "01\">" +
+        "<cOrgao>35</cOrgao><tpAmb>2</tpAmb><CNPJ>12345678000195</CNPJ>" +
+        "<chNFe>35250812345678000195550010000001231123456789</chNFe>" +
+        "<dhEvento>2025-08-12T10:10:00-03:00</dhEvento><tpEvento>110111</tpEvento>" +
+        "<nSeqEvento>1</nSeqEvento><verEvento>1.00</verEvento>" +
+        "<detEvento versao=\"1.00\"><descEvento>Cancelamento</descEvento>" +
+        "<nProt>135250000000001</nProt><xJust>Justificativa de teste com quinze ou mais caracteres</xJust>" +
+        "</detEvento>" +
+        "</infEvento>" +
+        "</evento>";
+
+    @Test
+    public void assinaEventoEAdicionaElementoSignatureComoUltimoFilhoDeEvento() throws Exception {
+        Document documento = parseDocumento(EVENTO_NAO_ASSINADO);
+
+        AssinadorXml.assinarEvento(documento, pfxBytes(), "teste123");
+
+        Element raizEvento = documento.getDocumentElement();
+        NodeList assinaturas = raizEvento.getElementsByTagNameNS("http://www.w3.org/2000/09/xmldsig#", "Signature");
+        assertEquals(1, assinaturas.getLength());
+        assertEquals("Signature deve ser o último filho de evento", assinaturas.item(0), raizEvento.getLastChild());
+    }
+
     private Document parseDocumento(String xml) throws Exception {
         DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
         dbf.setNamespaceAware(true);
