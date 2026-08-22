@@ -67,7 +67,7 @@ propagates as one of three unchecked exception types instead:
 
 - `net.accellog.sefaz4j.nfe` — the facade and config/result types described above.
 - `net.accellog.sefaz4j.chave` (shared) — `ChaveAcessoCalculator`: builds the 44-digit chave de acesso (43 digits + check digit, mod-11).
-- `net.accellog.sefaz4j.xml` — `NFeXmlBuilder`: marshals a `TNFe` (JAXB) into a DOM `Document`, injecting `infNFe/@Id` and `ide/cDV`
+- `net.accellog.sefaz4j.nfe.xml` — `NFeXmlBuilder`: marshals a `TNFe` (JAXB) into a DOM `Document`, injecting `infNFe/@Id` and `ide/cDV`
   from the computed chave when absent.
 - `net.accellog.sefaz4j.assinatura` (shared) — `AssinadorXml` (Apache Santuario XML signature), `CertificadoA1` (PKCS12 loading),
   `CertificadoException`.
