@@ -34,7 +34,15 @@ public final class EventoXmlBuilder {
         String detEventoXmlFragmento
     ) {
         String id = "ID" + tpEvento + chNFe + String.format("%02d", nSeqEvento);
-        String dhEvento = OffsetDateTime.now().truncatedTo(ChronoUnit.SECONDS).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+        // Não usar DateTimeFormatter.ISO_OFFSET_DATE_TIME: ele imprime "Z" (em
+        // vez de "+00:00"/"-00:00") quando o offset é exatamente zero — o que
+        // acontece em qualquer host UTC (ex.: runners de CI). O tipo do schema
+        // (TDateTimeUTC, tiposBasico_v1.03.xsd) só aceita offset numérico
+        // explícito, nunca "Z", então isso fazia dhEvento falhar a validação
+        // XSD especificamente em hosts UTC. O padrão "xxx" (minúsculo) sempre
+        // emite "+HH:mm"/"-HH:mm", nunca colapsa para "Z".
+        String dhEvento = OffsetDateTime.now().truncatedTo(ChronoUnit.SECONDS)
+            .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssxxx"));
 
         String xml = "<evento xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"" + verEvento + "\">" +
             "<infEvento Id=\"" + id + "\">" +

@@ -304,6 +304,17 @@ public class Sefaz4jNFeTest {
         assertEquals("217", resultado.getCStat());
     }
 
+    // Prova do finding #4 do review final: chaveAcesso malformado (aqui, curto
+    // demais) deve falhar cedo com IllegalArgumentException — nunca vazar como
+    // StringIndexOutOfBoundsException/NullPointerException. Não depende do
+    // servidor HTTPS local: a validação ocorre antes de qualquer chamada de rede.
+    @Test(expected = IllegalArgumentException.class)
+    public void consultarSituacaoRejeitaChaveAcessoInvalida() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jNFe.consultarSituacao(config, "chave-invalida");
+    }
+
     @Test
     public void cancelarRetornaEventoRegistrado() {
         servidor.createContext("/evento", exchange -> {
@@ -341,6 +352,39 @@ public class Sefaz4jNFeTest {
         assertEquals("135250000000002", resultado.getNProt());
     }
 
+    // Prova do finding #5 do review final: quando a SEFAZ rejeita o EVENTO no
+    // nível do LOTE (sem devolver nenhum <retEvento> individual — cenário
+    // real de duplicidade/rejeição de lote), enviarEProcessarEvento tem que
+    // cair no fallback (cStat/xMotivo do retEnvEvento) em vez de quebrar por
+    // protocoloXml==null; isOk() deve refletir a rejeição, nunca lançar.
+    @Test
+    public void cancelarRetornaRejeitadoSemRetEventoQuandoLoteERejeitado() {
+        servidor.createContext("/evento-lote-rejeitado", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><nfeResultMsg xmlns=\"http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4\">" +
+                "<retEnvEvento xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"1.00\">" +
+                "<idLote>1</idLote><tpAmb>2</tpAmb><verAplic>SP_1.0.0</verAplic><cOrgao>35</cOrgao>" +
+                "<cStat>573</cStat><xMotivo>Duplicidade de evento</xMotivo>" +
+                "</retEnvEvento></nfeResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+        config.setUrlRecepcaoEventoOverride("https://localhost:" + servidor.getAddress().getPort() + "/evento-lote-rejeitado");
+
+        ResultadoEvento resultado = Sefaz4jNFe.cancelar(
+            config,
+            "35250812345678000195550010000001231123456789",
+            "135250000000001",
+            "Justificativa de teste com quinze ou mais caracteres"
+        );
+
+        assertFalse(resultado.isOk());
+        assertEquals("573", resultado.getCStat());
+    }
+
     @Test(expected = IllegalArgumentException.class)
     public void cancelarRejeitaJustificativaCurta() {
         Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
@@ -350,6 +394,35 @@ public class Sefaz4jNFeTest {
             "35250812345678000195550010000001231123456789",
             "135250000000001",
             "curta"
+        );
+    }
+
+    // Prova do finding #3 do review final: TJust (usado por xJust em
+    // cancelar/inutilizar) exige no máximo 255 caracteres; um valor mais
+    // longo deve ser rejeitado localmente (IllegalArgumentException), não
+    // deixado para falhar como uma violação genérica de XSD.
+    @Test(expected = IllegalArgumentException.class)
+    public void cancelarRejeitaJustificativaLonga() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jNFe.cancelar(
+            config,
+            "35250812345678000195550010000001231123456789",
+            "135250000000001",
+            "J".repeat(256)
+        );
+    }
+
+    // Prova do finding #4 do review final.
+    @Test(expected = IllegalArgumentException.class)
+    public void cancelarRejeitaChaveAcessoInvalida() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jNFe.cancelar(
+            config,
+            "chave-invalida",
+            "135250000000001",
+            "Justificativa de teste com quinze ou mais caracteres"
         );
     }
 
@@ -389,6 +462,37 @@ public class Sefaz4jNFeTest {
         assertEquals("135250000000003", resultado.getNProt());
     }
 
+    // Prova do finding #5 do review final: mesma forma de rejeição no nível
+    // do LOTE (sem <retEvento> individual) para a CC-e, e cobertura da
+    // sobrecarga de 4 argumentos com nSeqEvento != 1 (aqui, 2).
+    @Test
+    public void corrigirCartaDeCorrecaoRetornaRejeitadoSemRetEventoQuandoLoteERejeitado() {
+        servidor.createContext("/evento-cce-lote-rejeitado", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><nfeResultMsg xmlns=\"http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4\">" +
+                "<retEnvEvento xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"1.00\">" +
+                "<idLote>1</idLote><tpAmb>2</tpAmb><verAplic>SP_1.0.0</verAplic><cOrgao>35</cOrgao>" +
+                "<cStat>999</cStat><xMotivo>Rejeição: Erro não catalogado</xMotivo>" +
+                "</retEnvEvento></nfeResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+        config.setUrlRecepcaoEventoOverride("https://localhost:" + servidor.getAddress().getPort() + "/evento-cce-lote-rejeitado");
+
+        ResultadoEvento resultado = Sefaz4jNFe.corrigirCartaDeCorrecao(
+            config,
+            "35250812345678000195550010000001231123456789",
+            "Correção de teste com quinze ou mais caracteres para descrever o erro cadastral corrigido",
+            2
+        );
+
+        assertFalse(resultado.isOk());
+        assertEquals("999", resultado.getCStat());
+    }
+
     @Test(expected = IllegalArgumentException.class)
     public void corrigirCartaDeCorrecaoRejeitaTextoCurto() {
         Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
@@ -398,6 +502,32 @@ public class Sefaz4jNFeTest {
             "35250812345678000195550010000001231123456789",
             "curta",
             2
+        );
+    }
+
+    // Prova do finding #3 do review final: xCorrecao (leiauteCCe_v1.00.xsd)
+    // exige no máximo 1000 caracteres.
+    @Test(expected = IllegalArgumentException.class)
+    public void corrigirCartaDeCorrecaoRejeitaTextoLongo() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jNFe.corrigirCartaDeCorrecao(
+            config,
+            "35250812345678000195550010000001231123456789",
+            "C".repeat(1001),
+            2
+        );
+    }
+
+    // Prova do finding #4 do review final.
+    @Test(expected = IllegalArgumentException.class)
+    public void corrigirCartaDeCorrecaoRejeitaChaveAcessoInvalida() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jNFe.corrigirCartaDeCorrecao(
+            config,
+            "chave-invalida",
+            "Correção de teste com quinze ou mais caracteres para descrever o erro cadastral corrigido"
         );
     }
 
@@ -433,11 +563,52 @@ public class Sefaz4jNFeTest {
         assertEquals("102", resultado.getCStat());
     }
 
+    // Prova do finding #5 do review final: rejeição de negócio da SEFAZ
+    // (cStat != 102) deve virar ResultadoInutilizacao(ok=false), nunca lançar.
+    @Test
+    public void inutilizarRetornaRejeitado() {
+        servidor.createContext("/inutilizacao-rejeitada", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><nfeResultMsg xmlns=\"http://www.portalfiscal.inf.br/nfe/wsdl/NFeInutilizacao4\">" +
+                "<retInutNFe xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"4.00\">" +
+                "<infInut Id=\"ID35" + "25" + "12345678000195" + "55" + "001" + "000000123" + "000000124\">" +
+                "<tpAmb>2</tpAmb><verAplic>SP_1.0.0</verAplic>" +
+                "<cStat>241</cStat><xMotivo>nNFIni deve ser menor ou igual a nNFFin</xMotivo>" +
+                "<cUF>35</cUF><ano>25</ano><CNPJ>12345678000195</CNPJ><mod>55</mod><serie>001</serie>" +
+                "<nNFIni>000000123</nNFIni><nNFFin>000000124</nNFFin>" +
+                "<dhRecbto>2025-08-12T10:15:00-03:00</dhRecbto>" +
+                "</infInut>" +
+                "</retInutNFe></nfeResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+        config.setUrlInutilizacaoOverride("https://localhost:" + servidor.getAddress().getPort() + "/inutilizacao-rejeitada");
+
+        ResultadoInutilizacao resultado = Sefaz4jNFe.inutilizar(
+            config, "35", "25", "12345678000195", "1", "123", "124",
+            "Justificativa de teste com quinze ou mais caracteres"
+        );
+
+        assertFalse(resultado.isOk());
+        assertEquals("241", resultado.getCStat());
+    }
+
     @Test(expected = IllegalArgumentException.class)
     public void inutilizarRejeitaJustificativaCurta() {
         Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
 
         Sefaz4jNFe.inutilizar(config, "35", "25", "12345678000195", "1", "123", "124", "curta");
+    }
+
+    // Prova do finding #3 do review final.
+    @Test(expected = IllegalArgumentException.class)
+    public void inutilizarRejeitaJustificativaLonga() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jNFe.inutilizar(config, "35", "25", "12345678000195", "1", "123", "124", "J".repeat(256));
     }
 
     @Test(expected = IllegalArgumentException.class)

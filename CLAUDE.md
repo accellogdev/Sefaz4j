@@ -116,6 +116,14 @@ propagates as one of three unchecked exception types instead:
   `ValidadorXsd` foram generalizados (nome do elemento a assinar / caminho do XSD raiz como parâmetro)
   em vez de duplicados. Os XSDs correspondentes em `src/main/resources/schemas/nfe/` são só para
   `ValidadorXsd`, nunca aparecem no `schemaIncludes` do plugin JAXB.
+- **`src/main/resources/schemas/nfe/leiauteCCe_v1.00.xsd` difere deliberadamente do arquivo oficial
+  da SEFAZ**: o arquivo oficial redefine o `xs:complexType`/`xs:simpleType` `TCOrgaoIBGE`, que já
+  vem incluído de `tiposBasico_v1.03.xsd` — um defeito de autoria genuíno do arquivo oficial que o
+  `SchemaFactory`/validador XSD do Java rejeita com `sch-props-correct.2` (tipo duplicado no mesmo
+  namespace). O bloco duplicado foi removido desta cópia bundled (comentário no próprio arquivo, logo
+  após o `simpleType` `TVerEvento`); a versão de referência original, com o defeito, continua em
+  `Schemas/NFe/leiauteCCe_v1.00.xsd`, fora do controle de versão — não copie esse arquivo de volta
+  por cima do bundled.
 
 ## Release / CI
 

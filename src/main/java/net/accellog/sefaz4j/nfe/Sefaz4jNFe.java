@@ -29,7 +29,15 @@ import java.nio.charset.StandardCharsets;
 
 public final class Sefaz4jNFe {
 
+    // Limites do tipo TJust (tiposBasico_v1.03.xsd) — usado por xJust em
+    // cancelar (leiauteEventoCancNFe_v1.00.xsd) e em inutilizar
+    // (leiauteInutNFe_v4.00.xsd).
     private static final int TAMANHO_MINIMO_JUSTIFICATIVA = 15;
+    private static final int TAMANHO_MAXIMO_JUSTIFICATIVA = 255;
+
+    // Limites de xCorrecao em leiauteCCe_v1.00.xsd.
+    private static final int TAMANHO_MINIMO_TEXTO_CORRECAO = 15;
+    private static final int TAMANHO_MAXIMO_TEXTO_CORRECAO = 1000;
 
     private Sefaz4jNFe() {
     }
@@ -101,6 +109,8 @@ public final class Sefaz4jNFe {
     }
 
     public static ResultadoConsulta consultarSituacao(Sefaz4jConfig config, String chaveAcesso) {
+        exigirChaveAcessoValida(chaveAcesso);
+
         String xmlConsulta = "<consSitNFe xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"4.00\">" +
             "<tpAmb>" + config.getAmbiente().getTpAmb() + "</tpAmb>" +
             "<xServ>CONSULTAR</xServ>" +
@@ -135,7 +145,16 @@ public final class Sefaz4jNFe {
     }
 
     public static ResultadoEvento cancelar(Sefaz4jConfig config, String chaveAcesso, String nProt, String justificativa) {
-        exigirTamanhoMinimo(justificativa, TAMANHO_MINIMO_JUSTIFICATIVA, "justificativa do cancelamento");
+        exigirChaveAcessoValida(chaveAcesso);
+        exigirTamanho(justificativa, TAMANHO_MINIMO_JUSTIFICATIVA, TAMANHO_MAXIMO_JUSTIFICATIVA, "justificativa do cancelamento");
+        // nProt não usa um validador dedicado: é interpolado sem escapar no
+        // XML montado abaixo, mas o schema (TProt, tiposBasico_v1.03.xsd)
+        // exige exatamente 15 dígitos numéricos, então um nProt malformado só
+        // pode falhar a validação XSD subsequente (ValidacaoXsdException) —
+        // nunca introduzir metacaracteres de XML, já que dígitos não são.
+        if (nProt == null || !nProt.matches("[0-9]{15}")) {
+            throw new IllegalArgumentException("O campo 'nProt' deve ter exatamente 15 dígitos numéricos, obteve: '" + nProt + "'");
+        }
 
         String cUF = chaveAcesso.substring(0, 2);
         String cnpj = chaveAcesso.substring(6, 20);
@@ -166,7 +185,8 @@ public final class Sefaz4jNFe {
     }
 
     public static ResultadoEvento corrigirCartaDeCorrecao(Sefaz4jConfig config, String chaveAcesso, String textoCorrecao, int nSeqEvento) {
-        exigirTamanhoMinimo(textoCorrecao, 15, "texto de correção da CC-e");
+        exigirChaveAcessoValida(chaveAcesso);
+        exigirTamanho(textoCorrecao, TAMANHO_MINIMO_TEXTO_CORRECAO, TAMANHO_MAXIMO_TEXTO_CORRECAO, "texto de correção da CC-e");
 
         String cUF = chaveAcesso.substring(0, 2);
         String cnpj = chaveAcesso.substring(6, 20);
@@ -194,7 +214,7 @@ public final class Sefaz4jNFe {
         String nNFFin,
         String justificativa
     ) {
-        exigirTamanhoMinimo(justificativa, TAMANHO_MINIMO_JUSTIFICATIVA, "justificativa da inutilização");
+        exigirTamanho(justificativa, TAMANHO_MINIMO_JUSTIFICATIVA, TAMANHO_MAXIMO_JUSTIFICATIVA, "justificativa da inutilização");
 
         String serieParaId = padEsquerdaComZeros(serie, 3);
         String nNFIniParaId = padEsquerdaComZeros(nNFIni, 9);
@@ -282,10 +302,25 @@ public final class Sefaz4jNFe {
         }
     }
 
-    private static void exigirTamanhoMinimo(String texto, int tamanhoMinimo, String nomeCampo) {
-        if (texto == null || texto.length() < tamanhoMinimo) {
+    private static void exigirTamanho(String texto, int tamanhoMinimo, int tamanhoMaximo, String nomeCampo) {
+        if (texto == null || texto.length() < tamanhoMinimo || texto.length() > tamanhoMaximo) {
             throw new IllegalArgumentException(
-                "O campo '" + nomeCampo + "' deve ter ao menos " + tamanhoMinimo + " caracteres"
+                "O campo '" + nomeCampo + "' deve ter entre " + tamanhoMinimo + " e " + tamanhoMaximo + " caracteres"
+            );
+        }
+    }
+
+    // Validação local (IllegalArgumentException) antes de qualquer
+    // substring/montagem de XML — sem isso, uma chaveAcesso nula ou curta
+    // vazava como NullPointerException/StringIndexOutOfBoundsException, que
+    // não é nenhum dos três tipos de exceção técnica documentados nem segue o
+    // padrão de validação local já usado por inutilizar. Também garante que
+    // chNFe, interpolado sem escapar no XML montado por concatenação de
+    // string (consSitNFe/detEvento), não pode carregar metacaracteres de XML.
+    private static void exigirChaveAcessoValida(String chaveAcesso) {
+        if (chaveAcesso == null || !chaveAcesso.matches("[0-9]{44}")) {
+            throw new IllegalArgumentException(
+                "O campo 'chaveAcesso' deve ter exatamente 44 dígitos numéricos, obteve: '" + chaveAcesso + "'"
             );
         }
     }

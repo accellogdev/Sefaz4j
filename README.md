@@ -2,13 +2,15 @@
 
 Biblioteca Java pura (sem framework, sem `main`) para emissão e comunicação com a SEFAZ dos
 documentos fiscais eletrônicos brasileiros. O objetivo final é cobrir **NFe**, **CTe**, **MDFe** e
-**NFSe**, mas hoje só o fluxo de **envio/autorização de NFe 4.00** está implementado — os demais
+**NFSe**, mas hoje só o **ciclo de vida completo da NFe 4.00** está implementado — os demais
 documentos ainda não têm código neste repositório.
 
 O que o pacote de NFe já faz: monta o XML a partir de um objeto JAXB (`TNFe`), calcula a chave de
 acesso, assina digitalmente (XML-DSig), valida contra a XSD oficial da SEFAZ, transmite via SOAP
 sobre TLS mútuo (certificado A1) e, se o lote ficar "em processamento", faz o polling de
-`NFeRetAutorizacao4` até obter o protocolo.
+`NFeRetAutorizacao4` até obter o protocolo. Além da emissão, também cobre o ciclo de vida
+pós-emissão: consulta de situação, cancelamento, Carta de Correção (CC-e) e inutilização de faixa
+de numeração.
 
 ## Requisitos
 
@@ -95,6 +97,41 @@ if (resultado.isOk()) {
 Se o XML já vier assinado por outro processo, pule direto para validação+transmissão com
 `Sefaz4jNFe.enviarXmlAssinado(config, xmlAssinado)`.
 
+### Ciclo de vida pós-emissão
+
+Além de `emitir`/`enviarXmlAssinado`, a fachada `Sefaz4jNFe` também cobre consulta, cancelamento,
+Carta de Correção e inutilização — nenhum desses métodos usa JAXB, o XML é montado por
+concatenação de string (mesmo estilo de `SoapEnvelopeBuilder`) e sempre validado contra a XSD
+oficial antes de transmitir:
+
+```java
+// Consultar a situação de uma NFe já transmitida.
+ResultadoConsulta consulta = Sefaz4jNFe.consultarSituacao(config, chaveAcesso);
+
+// Cancelar uma NFe autorizada (chave de acesso, número do protocolo de
+// autorização e uma justificativa com 15 a 255 caracteres).
+ResultadoEvento cancelamento = Sefaz4jNFe.cancelar(config, chaveAcesso, nProtAutorizacao, justificativa);
+
+// Emitir uma Carta de Correção (texto de correção com 15 a 1000 caracteres).
+// O nSeqEvento (sequencial, padrão 1) é obrigatório a partir da segunda CC-e da mesma NFe.
+ResultadoEvento cce = Sefaz4jNFe.corrigirCartaDeCorrecao(config, chaveAcesso, textoCorrecao);
+ResultadoEvento segundaCce = Sefaz4jNFe.corrigirCartaDeCorrecao(config, chaveAcesso, textoCorrecao, 2);
+
+// Inutilizar uma faixa de numeração não usada (não depende de uma NFe específica).
+ResultadoInutilizacao inutilizacao = Sefaz4jNFe.inutilizar(
+    config, cUF, ano, cnpj, serie, nNFIni, nNFFin, justificativa
+);
+```
+
+`ResultadoConsulta`, `ResultadoEvento` e `ResultadoInutilizacao` seguem o mesmo formato de
+`ResultadoEmissao`: `isOk()` é estrito para o `cStat` de sucesso específico da operação (`100` para
+consulta, `135` para cancelamento/CC-e, `102` para inutilização), com `getCStat()`/`getXMotivo()`
+sempre preenchidos para inspecionar qualquer outro código. As mesmas três exceções técnicas do
+fluxo de emissão (`CertificadoException`/`ValidacaoXsdException`/`ComunicacaoException`) valem
+aqui; além disso, esses métodos validam localmente seus parâmetros (chave de acesso com 44
+dígitos, tamanho de justificativa/texto de correção) e lançam `IllegalArgumentException` cedo
+quando o chamador passa um valor malformado.
+
 ### Contrato de erros
 
 `resultado.isOk()` só é `false` quando a SEFAZ processou o lote e devolveu um `cStat` diferente de
@@ -148,6 +185,7 @@ Tudo que um consumidor precisa está no pacote raiz `net.accellog.sefaz4j.nfe` (
 ## Roadmap
 
 - [x] NFe — envio/autorização (4.00)
+- [x] NFe — ciclo de vida pós-emissão (consulta/cancelamento/CC-e/inutilização)
 - [ ] CTe
 - [ ] MDFe
 - [ ] NFSe

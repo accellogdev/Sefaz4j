@@ -379,4 +379,5 @@
 			<xs:pattern value="1\.00"/>
 		</xs:restriction>
 	</xs:simpleType>
+	<!-- NOTA: o arquivo oficial da SEFAZ redefine TCOrgaoIBGE aqui, duplicando a definição já incluída de tiposBasico_v1.03.xsd (causa um erro sch-props-correct.2 no validador XSD do Java). O bloco duplicado foi removido desta cópia bundled; a versão de referência original (com o defeito) fica em Schemas/NFe/leiauteCCe_v1.00.xsd, fora do controle de versão. NÃO restaure este bloco a partir do arquivo de referência. -->
 </xs:schema>
