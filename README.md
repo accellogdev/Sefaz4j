@@ -140,9 +140,9 @@ quando o chamador passa um valor malformado.
 
 | Exceção | Quando ocorre |
 |---|---|
-| `net.accellog.sefaz4j.nfe.assinatura.CertificadoException` | PFX/senha inválidos, ou falha na assinatura |
-| `net.accellog.sefaz4j.nfe.validacao.ValidacaoXsdException` | XML montado/informado não passa na XSD (`getViolacoes()`) |
-| `net.accellog.sefaz4j.nfe.webservice.ComunicacaoException` | falha HTTP/SOAP, resposta da SEFAZ ilegível, ou lote ainda `103` após esgotar o polling — situação ambígua, não é seguro reenviar sem investigar |
+| `net.accellog.sefaz4j.assinatura.CertificadoException` | PFX/senha inválidos, ou falha na assinatura |
+| `net.accellog.sefaz4j.validacao.ValidacaoXsdException` | XML montado/informado não passa na XSD (`getViolacoes()`) |
+| `net.accellog.sefaz4j.webservice.ComunicacaoException` | falha HTTP/SOAP, resposta da SEFAZ ilegível, ou lote ainda `103` após esgotar o polling — situação ambígua, não é seguro reenviar sem investigar |
 
 Ajuste os parâmetros de polling e timeout com os setters fluentes de `Sefaz4jConfig`:
 `setTimeout`, `setMaxTentativasPolling`, `setIntervaloPolling` (padrões: 30s, 5 tentativas, 5s).

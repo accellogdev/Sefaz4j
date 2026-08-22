@@ -57,27 +57,27 @@ Everything a consumer needs lives in the top-level package `net.accellog.sefaz4j
 an unresolved still-processing state is never silently turned into `ok=false`). Every technical failure
 propagates as one of three unchecked exception types instead:
 
-- `net.accellog.sefaz4j.nfe.assinatura.CertificadoException` — bad PFX/password, or the signing step itself failed.
-- `net.accellog.sefaz4j.nfe.validacao.ValidacaoXsdException` — the built/given XML fails XSD validation (carries `getViolacoes()`).
-- `net.accellog.sefaz4j.nfe.webservice.ComunicacaoException` — HTTP/SOAP failure, unparseable SEFAZ response, or
+- `net.accellog.sefaz4j.assinatura.CertificadoException` — bad PFX/password, or the signing step itself failed.
+- `net.accellog.sefaz4j.validacao.ValidacaoXsdException` — the built/given XML fails XSD validation (carries `getViolacoes()`).
+- `net.accellog.sefaz4j.webservice.ComunicacaoException` — HTTP/SOAP failure, unparseable SEFAZ response, or
   the lot still being `103` after `ReciboPoller` exhausts its polling attempts (an ambiguous outcome, deliberately
   not reported as `ok=false` — the caller must not blindly retry an NFe of unknown status).
 
 ## Package layout
 
 - `net.accellog.sefaz4j.nfe` — the facade and config/result types described above.
-- `chave` — `ChaveAcessoCalculator`: builds the 44-digit chave de acesso (43 digits + check digit, mod-11).
-- `xml` — `NFeXmlBuilder`: marshals a `TNFe` (JAXB) into a DOM `Document`, injecting `infNFe/@Id` and `ide/cDV`
+- `net.accellog.sefaz4j.chave` (shared) — `ChaveAcessoCalculator`: builds the 44-digit chave de acesso (43 digits + check digit, mod-11).
+- `net.accellog.sefaz4j.xml` — `NFeXmlBuilder`: marshals a `TNFe` (JAXB) into a DOM `Document`, injecting `infNFe/@Id` and `ide/cDV`
   from the computed chave when absent.
-- `assinatura` — `AssinadorXml` (Apache Santuario XML signature), `CertificadoA1` (PKCS12 loading),
+- `net.accellog.sefaz4j.assinatura` (shared) — `AssinadorXml` (Apache Santuario XML signature), `CertificadoA1` (PKCS12 loading),
   `CertificadoException`.
-- `validacao` — `ValidadorXsd`: validates a serialized XML string against the bundled `nfe_v4.00.xsd`
+- `net.accellog.sefaz4j.validacao` (shared) — `ValidadorXsd`: validates a serialized XML string against the bundled `nfe_v4.00.xsd`
   chain; `ValidacaoXsdException`.
-- `webservice` — `SefazHttpClient` (mutual-TLS `java.net.http.HttpClient`, with per-certificate
+- `net.accellog.sefaz4j.webservice` (shared) — `SefazHttpClient` (mutual-TLS `java.net.http.HttpClient`, with per-certificate
   `SSLContext`/`HttpClient` caching), `SoapEnvelopeBuilder`, `RespostaSefazParser`, `RespostaSefaz`,
   `ReciboPoller` (polls `NFeRetAutorizacao4` while `cStat == 103`), `ComunicacaoException`.
-- `endpoints` — `EndpointResolver` + `UF`/`Ambiente`/`Servico`, backed by `src/main/resources/endpoints/nfe-servicos.ini`.
-- `model` — **generated** JAXB classes (`TNFe`, `ObjectFactory`, etc.) — do not hand-edit, see below.
+- `net.accellog.sefaz4j.endpoints` (shared) — `EndpointResolver` + `UF`/`Ambiente`/`Servico`, backed by `src/main/resources/endpoints/nfe-servicos.ini`.
+- `net.accellog.sefaz4j.nfe.model` — **generated** JAXB classes (`TNFe`, `ObjectFactory`, etc.) — do not hand-edit, see below.
 
 ## Key technical facts for future sessions
 
