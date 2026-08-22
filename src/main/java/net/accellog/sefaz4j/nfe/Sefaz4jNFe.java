@@ -11,6 +11,7 @@ import net.accellog.sefaz4j.nfe.webservice.RespostaSefaz;
 import net.accellog.sefaz4j.nfe.webservice.RespostaSefazParser;
 import net.accellog.sefaz4j.nfe.webservice.SefazHttpClient;
 import net.accellog.sefaz4j.nfe.webservice.SoapEnvelopeBuilder;
+import net.accellog.sefaz4j.nfe.xml.EventoXmlBuilder;
 import net.accellog.sefaz4j.nfe.xml.NFeXmlBuilder;
 import org.w3c.dom.Document;
 import org.w3c.dom.NodeList;
@@ -27,6 +28,8 @@ import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 
 public final class Sefaz4jNFe {
+
+    private static final int TAMANHO_MINIMO_JUSTIFICATIVA = 15;
 
     private Sefaz4jNFe() {
     }
@@ -129,6 +132,79 @@ public final class Sefaz4jNFe {
             resposta.getChNFe(),
             resposta.getProtocoloXml()
         );
+    }
+
+    public static ResultadoEvento cancelar(Sefaz4jConfig config, String chaveAcesso, String nProt, String justificativa) {
+        exigirTamanhoMinimo(justificativa, TAMANHO_MINIMO_JUSTIFICATIVA, "justificativa do cancelamento");
+
+        String cUF = chaveAcesso.substring(0, 2);
+        String cnpj = chaveAcesso.substring(6, 20);
+
+        String detEvento = "<detEvento versao=\"1.00\">" +
+            "<descEvento>Cancelamento</descEvento>" +
+            "<nProt>" + nProt + "</nProt>" +
+            "<xJust>" + escaparTextoXml(justificativa) + "</xJust>" +
+            "</detEvento>";
+
+        Document documento = EventoXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110111", 1, "1.00", detEvento);
+        AssinadorXml.assinarEvento(documento, config.getPfxBytes(), config.getSenhaPfx());
+        String xmlEventoAssinado = serializarDocumento(documento);
+
+        return enviarEProcessarEvento(config, xmlEventoAssinado, "eventoCancNFe_v1.00.xsd");
+    }
+
+    private static void exigirTamanhoMinimo(String texto, int tamanhoMinimo, String nomeCampo) {
+        if (texto == null || texto.length() < tamanhoMinimo) {
+            throw new IllegalArgumentException(
+                "O campo '" + nomeCampo + "' deve ter ao menos " + tamanhoMinimo + " caracteres"
+            );
+        }
+    }
+
+    // Escapa os 5 caracteres especiais de XML — necessário porque, ao
+    // contrário do fluxo de emissão (TNFe é serializado via JAXB, que já
+    // escapa automaticamente), aqui o XML do evento é montado por
+    // concatenação de string, e xJust/xCorrecao são texto livre do
+    // chamador.
+    private static String escaparTextoXml(String texto) {
+        return texto
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&apos;");
+    }
+
+    private static ResultadoEvento enviarEProcessarEvento(Sefaz4jConfig config, String xmlEventoAssinado, String xsdRaiz) {
+        ValidadorXsd.validar(xmlEventoAssinado, "/schemas/nfe/" + xsdRaiz);
+
+        String url = config.getUrlRecepcaoEventoOverride() != null
+            ? config.getUrlRecepcaoEventoOverride()
+            : EndpointResolver.resolver(config.getUf(), config.getAmbiente().paraEndpoints(), Servico.RECEPCAO_EVENTO);
+
+        String envelope = SoapEnvelopeBuilder.envelopeRecepcaoEvento(xmlEventoAssinado, 1L);
+        String respostaBruta = SefazHttpClient.postar(
+            url,
+            "http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4/nfeRecepcaoEvento",
+            envelope,
+            config.getPfxBytes(),
+            config.getSenhaPfx(),
+            config.getTimeout()
+        );
+
+        RespostaSefaz resposta = RespostaSefazParser.parsear(respostaBruta, "retEvento");
+
+        // Mesma distinção lote-vs-item já usada em enviarEProcessar (Task
+        // original de emissão): cStat/xMotivo do retEnvEvento descrevem o
+        // LOTE de evento; o cStat/xMotivo/nProt que realmente importa é o
+        // do retEvento individual, dentro do fragmento capturado como
+        // protocoloXml.
+        String protocoloXml = resposta.getProtocoloXml();
+        String cStatFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "cStat") : resposta.getCStat();
+        String xMotivoFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "xMotivo") : resposta.getXMotivo();
+        String nProtFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "nProt") : null;
+
+        return new ResultadoEvento("135".equals(cStatFinal), cStatFinal, xMotivoFinal, nProtFinal, protocoloXml);
     }
 
     private static ResultadoEmissao enviarEProcessar(Sefaz4jConfig config, String xmlAssinado) {

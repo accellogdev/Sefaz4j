@@ -304,6 +304,55 @@ public class Sefaz4jNFeTest {
         assertEquals("217", resultado.getCStat());
     }
 
+    @Test
+    public void cancelarRetornaEventoRegistrado() {
+        servidor.createContext("/evento", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><nfeResultMsg xmlns=\"http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4\">" +
+                "<retEnvEvento xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"1.00\">" +
+                "<idLote>1</idLote><tpAmb>2</tpAmb><verAplic>SP_1.0.0</verAplic><cOrgao>35</cOrgao>" +
+                "<cStat>128</cStat><xMotivo>Lote de evento processado</xMotivo>" +
+                "<retEvento versao=\"1.00\"><infEvento>" +
+                "<tpAmb>2</tpAmb><verAplic>SP_1.0.0</verAplic><cOrgao>35</cOrgao>" +
+                "<cStat>135</cStat><xMotivo>Evento registrado e vinculado a NF-e</xMotivo>" +
+                "<chNFe>35250812345678000195550010000001231123456789</chNFe>" +
+                "<tpEvento>110111</tpEvento><xEvento>Cancelamento</xEvento><nSeqEvento>1</nSeqEvento>" +
+                "<dhRegEvento>2025-08-12T10:11:00-03:00</dhRegEvento>" +
+                "<nProt>135250000000002</nProt>" +
+                "</infEvento></retEvento>" +
+                "</retEnvEvento></nfeResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+        config.setUrlRecepcaoEventoOverride("https://localhost:" + servidor.getAddress().getPort() + "/evento");
+
+        ResultadoEvento resultado = Sefaz4jNFe.cancelar(
+            config,
+            "35250812345678000195550010000001231123456789",
+            "135250000000001",
+            "Justificativa de teste com quinze ou mais caracteres"
+        );
+
+        assertTrue(resultado.isOk());
+        assertEquals("135", resultado.getCStat());
+        assertEquals("135250000000002", resultado.getNProt());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void cancelarRejeitaJustificativaCurta() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jNFe.cancelar(
+            config,
+            "35250812345678000195550010000001231123456789",
+            "135250000000001",
+            "curta"
+        );
+    }
+
     private static String xmlAssinadoValido() {
         return "<NFe xmlns=\"http://www.portalfiscal.inf.br/nfe\">" +
             "<infNFe Id=\"NFe35250812345678000195550010000001231123456789\" versao=\"4.00\">" +
