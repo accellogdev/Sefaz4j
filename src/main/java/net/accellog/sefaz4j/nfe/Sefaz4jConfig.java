@@ -1,6 +1,7 @@
 package net.accellog.sefaz4j.nfe;
 
-import net.accellog.sefaz4j.nfe.endpoints.UF;
+import net.accellog.sefaz4j.endpoints.Ambiente;
+import net.accellog.sefaz4j.endpoints.UF;
 
 import java.time.Duration;
 

@@ -16,7 +16,8 @@ import java.nio.file.Path;
 import java.security.KeyStore;
 import java.time.Duration;
 
-import net.accellog.sefaz4j.nfe.endpoints.UF;
+import net.accellog.sefaz4j.endpoints.Ambiente;
+import net.accellog.sefaz4j.endpoints.UF;
 import net.accellog.sefaz4j.nfe.model.ObjectFactory;
 import net.accellog.sefaz4j.nfe.model.TNFe;
 import net.accellog.sefaz4j.validacao.ValidacaoXsdException;

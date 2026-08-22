@@ -1,10 +1,10 @@
 package net.accellog.sefaz4j.nfe.integration;
 
-import net.accellog.sefaz4j.nfe.Ambiente;
+import net.accellog.sefaz4j.endpoints.Ambiente;
 import net.accellog.sefaz4j.nfe.ResultadoEmissao;
 import net.accellog.sefaz4j.nfe.Sefaz4jConfig;
 import net.accellog.sefaz4j.nfe.Sefaz4jNFe;
-import net.accellog.sefaz4j.nfe.endpoints.UF;
+import net.accellog.sefaz4j.endpoints.UF;
 import net.accellog.sefaz4j.nfe.model.ObjectFactory;
 import net.accellog.sefaz4j.nfe.model.TEnderEmi;
 import net.accellog.sefaz4j.nfe.model.TNFe;

@@ -1,7 +1,8 @@
 package net.accellog.sefaz4j.nfe;
 
 import net.accellog.sefaz4j.assinatura.AssinadorXml;
-import net.accellog.sefaz4j.nfe.endpoints.EndpointResolver;
+import net.accellog.sefaz4j.endpoints.Ambiente;
+import net.accellog.sefaz4j.endpoints.EndpointResolver;
 import net.accellog.sefaz4j.nfe.endpoints.Servico;
 import net.accellog.sefaz4j.nfe.model.TNFe;
 import net.accellog.sefaz4j.validacao.ValidadorXsd;
@@ -40,6 +41,8 @@ public final class Sefaz4jNFe {
     private static final int TAMANHO_MAXIMO_TEXTO_CORRECAO = 1000;
 
     private static final String NFE_NAMESPACE = "http://www.portalfiscal.inf.br/nfe";
+    private static final String NFE_SERVICOS_INI = "/endpoints/nfe-servicos.ini";
+    private static final String PREFIXO_SECAO_NFE = "NFE_";
 
     private Sefaz4jNFe() {
     }
@@ -123,7 +126,7 @@ public final class Sefaz4jNFe {
 
         String url = config.getUrlConsultaProtocoloOverride() != null
             ? config.getUrlConsultaProtocoloOverride()
-            : EndpointResolver.resolver(config.getUf(), config.getAmbiente().paraEndpoints(), Servico.NFE_CONSULTA_PROTOCOLO);
+            : EndpointResolver.resolver(NFE_SERVICOS_INI, PREFIXO_SECAO_NFE, config.getUf(), config.getAmbiente(), Servico.NFE_CONSULTA_PROTOCOLO.getChaveIni());
 
         String envelope = SoapEnvelopeBuilder.envelopeConsultaSituacao(xmlConsulta);
         String respostaBruta = SefazHttpClient.postar(
@@ -254,7 +257,7 @@ public final class Sefaz4jNFe {
 
         String url = config.getUrlInutilizacaoOverride() != null
             ? config.getUrlInutilizacaoOverride()
-            : EndpointResolver.resolver(config.getUf(), config.getAmbiente().paraEndpoints(), Servico.NFE_INUTILIZACAO);
+            : EndpointResolver.resolver(NFE_SERVICOS_INI, PREFIXO_SECAO_NFE, config.getUf(), config.getAmbiente(), Servico.NFE_INUTILIZACAO.getChaveIni());
 
         String envelope = SoapEnvelopeBuilder.envelopeInutilizacao(xmlAssinado);
         String respostaBruta = SefazHttpClient.postar(
@@ -346,7 +349,7 @@ public final class Sefaz4jNFe {
 
         String url = config.getUrlRecepcaoEventoOverride() != null
             ? config.getUrlRecepcaoEventoOverride()
-            : EndpointResolver.resolver(config.getUf(), config.getAmbiente().paraEndpoints(), Servico.RECEPCAO_EVENTO);
+            : EndpointResolver.resolver(NFE_SERVICOS_INI, PREFIXO_SECAO_NFE, config.getUf(), config.getAmbiente(), Servico.RECEPCAO_EVENTO.getChaveIni());
 
         String envelope = SoapEnvelopeBuilder.envelopeRecepcaoEvento(xmlEventoAssinado, 1L);
         String respostaBruta = SefazHttpClient.postar(
@@ -378,7 +381,7 @@ public final class Sefaz4jNFe {
 
         String urlAutorizacao = config.getUrlAutorizacaoOverride() != null
             ? config.getUrlAutorizacaoOverride()
-            : EndpointResolver.resolver(config.getUf(), config.getAmbiente().paraEndpoints(), Servico.NFE_AUTORIZACAO);
+            : EndpointResolver.resolver(NFE_SERVICOS_INI, PREFIXO_SECAO_NFE, config.getUf(), config.getAmbiente(), Servico.NFE_AUTORIZACAO.getChaveIni());
 
         String envelope = SoapEnvelopeBuilder.envelopeAutorizacao(xmlAssinado, 1L);
         String respostaBruta = SefazHttpClient.postar(
@@ -395,7 +398,7 @@ public final class Sefaz4jNFe {
         if ("103".equals(resposta.getCStat())) {
             String urlRetAutorizacao = config.getUrlRetAutorizacaoOverride() != null
                 ? config.getUrlRetAutorizacaoOverride()
-                : EndpointResolver.resolver(config.getUf(), config.getAmbiente().paraEndpoints(), Servico.NFE_RET_AUTORIZACAO);
+                : EndpointResolver.resolver(NFE_SERVICOS_INI, PREFIXO_SECAO_NFE, config.getUf(), config.getAmbiente(), Servico.NFE_RET_AUTORIZACAO.getChaveIni());
             resposta = ReciboPoller.aguardarProtocolo(
                 resposta.getNRec(),
                 config.getAmbiente().getTpAmb(),
