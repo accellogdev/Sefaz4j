@@ -1,4 +1,4 @@
-package net.accellog.sefaz4j.nfe.chave;
+package net.accellog.sefaz4j.chave;
 
 public final class ChaveAcessoCalculator {
 

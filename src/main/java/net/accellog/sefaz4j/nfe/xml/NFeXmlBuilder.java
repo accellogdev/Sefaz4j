@@ -1,6 +1,6 @@
 package net.accellog.sefaz4j.nfe.xml;
 
-import net.accellog.sefaz4j.nfe.chave.ChaveAcessoCalculator;
+import net.accellog.sefaz4j.chave.ChaveAcessoCalculator;
 import net.accellog.sefaz4j.nfe.model.ObjectFactory;
 import net.accellog.sefaz4j.nfe.model.TNFe;
 import org.w3c.dom.Document;

@@ -1,4 +1,4 @@
-package net.accellog.sefaz4j.nfe.chave;
+package net.accellog.sefaz4j.chave;
 
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
