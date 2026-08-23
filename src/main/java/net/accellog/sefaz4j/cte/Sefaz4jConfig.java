@@ -11,6 +11,8 @@ public final class Sefaz4jConfig {
     private final byte[] pfxBytes;
     private final String senhaPfx;
     private String urlAutorizacaoOverride;
+    private String urlConsultaProtocoloOverride;
+    private String urlRecepcaoEventoOverride;
     private Duration timeout = Duration.ofSeconds(30);
 
     public Sefaz4jConfig(UF uf, Ambiente ambiente, byte[] pfxBytes, String senhaPfx) {
@@ -47,6 +49,24 @@ public final class Sefaz4jConfig {
 
     public Sefaz4jConfig setUrlAutorizacaoOverride(String urlAutorizacaoOverride) {
         this.urlAutorizacaoOverride = urlAutorizacaoOverride;
+        return this;
+    }
+
+    public String getUrlConsultaProtocoloOverride() {
+        return urlConsultaProtocoloOverride;
+    }
+
+    public Sefaz4jConfig setUrlConsultaProtocoloOverride(String urlConsultaProtocoloOverride) {
+        this.urlConsultaProtocoloOverride = urlConsultaProtocoloOverride;
+        return this;
+    }
+
+    public String getUrlRecepcaoEventoOverride() {
+        return urlRecepcaoEventoOverride;
+    }
+
+    public Sefaz4jConfig setUrlRecepcaoEventoOverride(String urlRecepcaoEventoOverride) {
+        this.urlRecepcaoEventoOverride = urlRecepcaoEventoOverride;
         return this;
     }
 

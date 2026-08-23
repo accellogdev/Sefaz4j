@@ -39,4 +39,24 @@ public class Sefaz4jConfigTest {
 
         assertEquals(Duration.ofSeconds(5), config.getTimeout());
     }
+
+    @Test
+    public void setUrlConsultaProtocoloOverrideEhFluenteEEfetivo() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.HOMOLOGACAO, new byte[0], "senha");
+
+        Sefaz4jConfig retorno = config.setUrlConsultaProtocoloOverride("https://exemplo.invalido/consulta");
+
+        assertEquals(config, retorno);
+        assertEquals("https://exemplo.invalido/consulta", config.getUrlConsultaProtocoloOverride());
+    }
+
+    @Test
+    public void setUrlRecepcaoEventoOverrideEhFluenteEEfetivo() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.HOMOLOGACAO, new byte[0], "senha");
+
+        Sefaz4jConfig retorno = config.setUrlRecepcaoEventoOverride("https://exemplo.invalido/evento");
+
+        assertEquals(config, retorno);
+        assertEquals("https://exemplo.invalido/evento", config.getUrlRecepcaoEventoOverride());
+    }
 }
