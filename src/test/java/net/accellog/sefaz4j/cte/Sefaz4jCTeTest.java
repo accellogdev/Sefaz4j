@@ -435,6 +435,92 @@ public class Sefaz4jCTeTest {
         Sefaz4jCTe.consultarSituacao(config, "chave-invalida");
     }
 
+    @Test
+    public void cancelarRetornaEventoRegistrado() {
+        servidor.createContext("/evento-cancelamento", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><cteResultMsg xmlns=\"http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoEventoV4\">" +
+                "<retEventoCTe xmlns=\"http://www.portalfiscal.inf.br/cte\" versao=\"4.00\"><infEvento>" +
+                "<tpAmb>2</tpAmb><verAplic>SP_1.0.0</verAplic><cOrgao>35</cOrgao>" +
+                "<cStat>135</cStat><xMotivo>Evento registrado e vinculado ao CT-e</xMotivo>" +
+                "<chCTe>35250812345678000195570010000001231123456789</chCTe>" +
+                "<tpEvento>110111</tpEvento><xEvento>Cancelamento</xEvento><nSeqEvento>1</nSeqEvento>" +
+                "<dhRegEvento>2025-08-12T10:11:00-03:00</dhRegEvento>" +
+                "<nProt>135250000000002</nProt>" +
+                "</infEvento></retEventoCTe>" +
+                "</cteResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+        config.setUrlRecepcaoEventoOverride("https://localhost:" + servidor.getAddress().getPort() + "/evento-cancelamento");
+
+        ResultadoEvento resultado = Sefaz4jCTe.cancelar(
+            config,
+            "35250812345678000195570010000001231123456789",
+            "135250000000001",
+            "Justificativa de teste com quinze ou mais caracteres"
+        );
+
+        assertTrue(resultado.isOk());
+        assertEquals("135", resultado.getCStat());
+        assertEquals("135250000000002", resultado.getNProt());
+    }
+
+    @Test
+    public void cancelarRetornaRejeitadoSemRetEventoQuandoLoteERejeitado() {
+        servidor.createContext("/evento-cancelamento-rejeitado", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><cteResultMsg xmlns=\"http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoEventoV4\">" +
+                "<retEventoCTe xmlns=\"http://www.portalfiscal.inf.br/cte\" versao=\"4.00\">" +
+                "<idLote>1</idLote><tpAmb>2</tpAmb><verAplic>SP_1.0.0</verAplic><cOrgao>35</cOrgao>" +
+                "<cStat>573</cStat><xMotivo>Duplicidade de evento</xMotivo>" +
+                "</retEventoCTe></cteResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+        config.setUrlRecepcaoEventoOverride("https://localhost:" + servidor.getAddress().getPort() + "/evento-cancelamento-rejeitado");
+
+        ResultadoEvento resultado = Sefaz4jCTe.cancelar(
+            config,
+            "35250812345678000195570010000001231123456789",
+            "135250000000001",
+            "Justificativa de teste com quinze ou mais caracteres"
+        );
+
+        assertFalse(resultado.isOk());
+        assertEquals("573", resultado.getCStat());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void cancelarRejeitaJustificativaCurta() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jCTe.cancelar(
+            config,
+            "35250812345678000195570010000001231123456789",
+            "135250000000001",
+            "curta"
+        );
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void cancelarRejeitaChaveAcessoInvalida() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jCTe.cancelar(
+            config,
+            "chave-invalida",
+            "135250000000001",
+            "Justificativa de teste com quinze ou mais caracteres"
+        );
+    }
+
     /**
      * CT-e mínimo que passa integralmente pelo {@code cte_v4.00.xsd} — foi gerado montando um
      * {@code TCTe} via os tipos JAXB de {@code net.accellog.sefaz4j.cte.model} com todo o conjunto

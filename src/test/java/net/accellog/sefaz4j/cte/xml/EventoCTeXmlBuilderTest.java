@@ -32,7 +32,10 @@ public class EventoCTeXmlBuilderTest {
         NodeList infEventoList = raiz.getElementsByTagNameNS("http://www.portalfiscal.inf.br/cte", "infEvento");
         assertEquals(1, infEventoList.getLength());
         Element infEvento = (Element) infEventoList.item(0);
-        assertEquals("ID11011135250812345678000195570010000001231123456789" + "01", infEvento.getAttribute("Id"));
+        // nSeqEvento é zero-preenchido com 3 dígitos no CT-e (diferente do NFe, que usa 2) — ver
+        // eventoCTeTiposBasico_v4.00.xsd: infEvento/@Id casa "ID[0-9]{12}[A-Z0-9]{12}[0-9]{29}"
+        // (53 dígitos após "ID"), e tpEvento(6) + chCTe(44) só fecham 53 com nSeqEvento de 3 dígitos.
+        assertEquals("ID11011135250812345678000195570010000001231123456789" + "001", infEvento.getAttribute("Id"));
 
         NodeList chCTeList = raiz.getElementsByTagNameNS("http://www.portalfiscal.inf.br/cte", "chCTe");
         assertEquals("35250812345678000195570010000001231123456789", chCTeList.item(0).getTextContent());

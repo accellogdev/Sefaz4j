@@ -15,8 +15,8 @@ import java.time.temporal.ChronoUnit;
  * {@code detEvento}, já serializado) é responsabilidade do chamador; esta
  * classe só monta os campos fixos de {@code infEvento} comuns a todo
  * evento e o {@code Id} no formato exigido pelo schema
- * ("ID" + tpEvento + chave do CT-e + nSeqEvento com 2 dígitos). Diferente
- * de {@code net.accellog.sefaz4j.nfe.xml.EventoXmlBuilder}, o
+ * ("ID" + tpEvento + chave do CT-e + nSeqEvento com 3 dígitos — diferente do NFe, que usa 2).
+ * Diferente de {@code net.accellog.sefaz4j.nfe.xml.EventoXmlBuilder}, o
  * {@code infEvento} do CT-e não tem um elemento {@code verEvento} separado
  * — só o atributo {@code versao} do {@code eventoCTe} e o
  * {@code versaoEvento} do {@code detEvento} fornecido pelo chamador
@@ -37,7 +37,10 @@ public final class EventoCTeXmlBuilder {
         String versaoEvento,
         String detEventoXmlFragmento
     ) {
-        String id = "ID" + tpEvento + chCTe + String.format("%02d", nSeqEvento);
+        // Diferente do NFe (leiauteEventoCancNFe_v1.00.xsd: "ID[0-9]{52}", nSeqEvento com 2 dígitos),
+        // o Id do CT-e (eventoCTeTiposBasico_v4.00.xsd: "ID[0-9]{12}[A-Z0-9]{12}[0-9]{29}", 53 dígitos
+        // após "ID") exige nSeqEvento com 3 dígitos: tpEvento(6) + chCTe(44) + nSeqEvento(3) = 53.
+        String id = "ID" + tpEvento + chCTe + String.format("%03d", nSeqEvento);
         // Mesmo cuidado de fuso do EventoXmlBuilder do NFe: "xxx" (minúsculo) sempre emite "+HH:mm"/
         // "-HH:mm", nunca colapsa para "Z" em hosts UTC — TDateTimeUTC não aceita "Z".
         String dhEvento = OffsetDateTime.now().truncatedTo(ChronoUnit.SECONDS)

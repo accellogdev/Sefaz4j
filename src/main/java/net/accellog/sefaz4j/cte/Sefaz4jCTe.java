@@ -5,6 +5,7 @@ import net.accellog.sefaz4j.cte.endpoints.Servico;
 import net.accellog.sefaz4j.cte.model.TCTe;
 import net.accellog.sefaz4j.cte.webservice.SoapEnvelopeBuilder;
 import net.accellog.sefaz4j.cte.xml.CTeXmlBuilder;
+import net.accellog.sefaz4j.cte.xml.EventoCTeXmlBuilder;
 import net.accellog.sefaz4j.endpoints.EndpointResolver;
 import net.accellog.sefaz4j.validacao.ValidadorXsd;
 import net.accellog.sefaz4j.webservice.RespostaSefaz;
@@ -93,6 +94,34 @@ public final class Sefaz4jCTe {
         );
     }
 
+    public static ResultadoEvento cancelar(Sefaz4jConfig config, String chaveAcesso, String nProt, String justificativa) {
+        exigirChaveAcessoValida(chaveAcesso);
+        exigirTamanho(justificativa, TAMANHO_MINIMO_JUSTIFICATIVA, TAMANHO_MAXIMO_JUSTIFICATIVA, "justificativa do cancelamento");
+        if (nProt == null || !nProt.matches("[0-9]{15}")) {
+            throw new IllegalArgumentException("O campo 'nProt' deve ter exatamente 15 dígitos numéricos, obteve: '" + nProt + "'");
+        }
+
+        String cUF = chaveAcesso.substring(0, 2);
+        String cnpj = chaveAcesso.substring(6, 20);
+
+        String evCancCTeFragmento = "<evCancCTe xmlns=\"" + CTE_NAMESPACE + "\">" +
+            "<descEvento>Cancelamento</descEvento>" +
+            "<nProt>" + nProt + "</nProt>" +
+            "<xJust>" + escaparTextoXml(justificativa) + "</xJust>" +
+            "</evCancCTe>";
+        ValidadorXsd.validar(evCancCTeFragmento, "/schemas/cte/evCancCTe_v4.00.xsd");
+
+        String detEvento = "<detEvento versaoEvento=\"4.00\">" + evCancCTeFragmento + "</detEvento>";
+
+        Document documento = EventoCTeXmlBuilder.montar(
+            cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110111", 1, "4.00", detEvento
+        );
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), CTE_NAMESPACE, "infEvento");
+        String xmlEventoAssinado = serializarDocumento(documento);
+
+        return enviarEProcessarEvento(config, xmlEventoAssinado);
+    }
+
     private static void verificarTpAmbCompativel(Sefaz4jConfig config, TCTe cte) {
         if (cte.getInfCte() == null || cte.getInfCte().getIde() == null) {
             return;
@@ -163,6 +192,37 @@ public final class Sefaz4jCTe {
             : xmlAssinado;
 
         return new ResultadoEmissao(autorizado, cStatFinal, xMotivoFinal, resposta.getChaveDocumento(), xmlFinal);
+    }
+
+    private static ResultadoEvento enviarEProcessarEvento(Sefaz4jConfig config, String xmlEventoAssinado) {
+        ValidadorXsd.validar(xmlEventoAssinado, "/schemas/cte/eventoCTe_v4.00.xsd");
+
+        String url = config.getUrlRecepcaoEventoOverride() != null
+            ? config.getUrlRecepcaoEventoOverride()
+            : EndpointResolver.resolver(CTE_SERVICOS_INI, PREFIXO_SECAO_CTE, config.getUf(), config.getAmbiente(), Servico.CTE_RECEPCAO_EVENTO.getChaveIni());
+
+        String envelope = SoapEnvelopeBuilder.envelopeRecepcaoEvento(xmlEventoAssinado);
+        String respostaBruta = SefazHttpClient.postar(
+            url,
+            "http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoEventoV4/cteRecepcaoEvento",
+            envelope,
+            config.getPfxBytes(),
+            config.getSenhaPfx(),
+            config.getTimeout()
+        );
+
+        RespostaSefaz resposta = RespostaSefazParser.parsear(respostaBruta, "retEventoCTe");
+
+        // Mesmo padrão de fallback já usado por enviarEProcessar (fase 1) e por
+        // Sefaz4jNFe.enviarEProcessarEvento: cStat/xMotivo do nível do lote/retEventoCTe descrevem o
+        // envelope; o cStat/xMotivo/nProt que realmente importa é o do evento individual dentro do
+        // protocoloXml, quando presente.
+        String protocoloXml = resposta.getProtocoloXml();
+        String cStatFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "cStat") : resposta.getCStat();
+        String xMotivoFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "xMotivo") : resposta.getXMotivo();
+        String nProtFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "nProt") : null;
+
+        return new ResultadoEvento("135".equals(cStatFinal), cStatFinal, xMotivoFinal, nProtFinal, protocoloXml);
     }
 
     private static String extrairTextoDoElemento(String xmlFragmento, String nomeLocalElemento) {
