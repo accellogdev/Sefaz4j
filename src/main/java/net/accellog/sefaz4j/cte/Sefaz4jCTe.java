@@ -35,6 +35,14 @@ public final class Sefaz4jCTe {
     private static final int TAMANHO_MINIMO_JUSTIFICATIVA = 15;
     private static final int TAMANHO_MAXIMO_JUSTIFICATIVA = 255;
 
+    private static final String CTE_VERSAO = "4.00";
+    private static final String CONS_SIT_CTE_XSD = "/schemas/cte/consSitCTe_v4.00.xsd";
+    private static final String EVENTO_CTE_XSD = "/schemas/cte/eventoCTe_v4.00.xsd";
+    private static final String EV_CANC_CTE_XSD = "/schemas/cte/evCancCTe_v4.00.xsd";
+    private static final String EV_CCE_CTE_XSD = "/schemas/cte/evCCeCTe_v4.00.xsd";
+    private static final String SOAP_ACTION_CONSULTA = "http://www.portalfiscal.inf.br/cte/wsdl/CTeConsultaV4/cteConsultaCT";
+    private static final String SOAP_ACTION_RECEPCAO_EVENTO = "http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoEventoV4/cteRecepcaoEvento";
+
     private static final String X_COND_USO_CCE_CTE =
         "A Carta de Correção é disciplinada pelo Art. 58-B do CONVÊNIO/SINIEF 06/89: Fica permitida a " +
         "utilização de carta de correção, para regularização de erro ocorrido na emissão de documentos " +
@@ -71,13 +79,13 @@ public final class Sefaz4jCTe {
     public static ResultadoConsulta consultarSituacao(Sefaz4jConfig config, String chaveAcesso) {
         exigirChaveAcessoValida(chaveAcesso);
 
-        String xmlConsulta = "<consSitCTe xmlns=\"" + CTE_NAMESPACE + "\" versao=\"4.00\">" +
+        String xmlConsulta = "<consSitCTe xmlns=\"" + CTE_NAMESPACE + "\" versao=\"" + CTE_VERSAO + "\">" +
             "<tpAmb>" + config.getAmbiente().getTpAmb() + "</tpAmb>" +
             "<xServ>CONSULTAR</xServ>" +
             "<chCTe>" + chaveAcesso + "</chCTe>" +
             "</consSitCTe>";
 
-        ValidadorXsd.validar(xmlConsulta, "/schemas/cte/consSitCTe_v4.00.xsd");
+        ValidadorXsd.validar(xmlConsulta, CONS_SIT_CTE_XSD);
 
         String url = config.getUrlConsultaProtocoloOverride() != null
             ? config.getUrlConsultaProtocoloOverride()
@@ -86,7 +94,7 @@ public final class Sefaz4jCTe {
         String envelope = SoapEnvelopeBuilder.envelopeConsultaSituacao(xmlConsulta);
         String respostaBruta = SefazHttpClient.postar(
             url,
-            "http://www.portalfiscal.inf.br/cte/wsdl/CTeConsultaV4/cteConsultaCT",
+            SOAP_ACTION_CONSULTA,
             envelope,
             config.getPfxBytes(),
             config.getSenhaPfx(),
@@ -119,12 +127,12 @@ public final class Sefaz4jCTe {
             "<nProt>" + nProt + "</nProt>" +
             "<xJust>" + escaparTextoXml(justificativa) + "</xJust>" +
             "</evCancCTe>";
-        ValidadorXsd.validar(evCancCTeFragmento, "/schemas/cte/evCancCTe_v4.00.xsd");
+        ValidadorXsd.validar(evCancCTeFragmento, EV_CANC_CTE_XSD);
 
-        String detEvento = "<detEvento versaoEvento=\"4.00\">" + evCancCTeFragmento + "</detEvento>";
+        String detEvento = "<detEvento versaoEvento=\"" + CTE_VERSAO + "\">" + evCancCTeFragmento + "</detEvento>";
 
         Document documento = EventoCTeXmlBuilder.montar(
-            cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110111", 1, "4.00", detEvento
+            cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110111", 1, CTE_VERSAO, detEvento
         );
         AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), CTE_NAMESPACE, "infEvento");
         String xmlEventoAssinado = serializarDocumento(documento);
@@ -167,12 +175,12 @@ public final class Sefaz4jCTe {
             infCorrecoesXml +
             "<xCondUso>" + escaparTextoXml(X_COND_USO_CCE_CTE) + "</xCondUso>" +
             "</evCCeCTe>";
-        ValidadorXsd.validar(evCCeCTeFragmento, "/schemas/cte/evCCeCTe_v4.00.xsd");
+        ValidadorXsd.validar(evCCeCTeFragmento, EV_CCE_CTE_XSD);
 
-        String detEvento = "<detEvento versaoEvento=\"4.00\">" + evCCeCTeFragmento + "</detEvento>";
+        String detEvento = "<detEvento versaoEvento=\"" + CTE_VERSAO + "\">" + evCCeCTeFragmento + "</detEvento>";
 
         Document documento = EventoCTeXmlBuilder.montar(
-            cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110110", nSeqEvento, "4.00", detEvento
+            cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110110", nSeqEvento, CTE_VERSAO, detEvento
         );
         AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), CTE_NAMESPACE, "infEvento");
         String xmlEventoAssinado = serializarDocumento(documento);
@@ -253,7 +261,7 @@ public final class Sefaz4jCTe {
     }
 
     private static ResultadoEvento enviarEProcessarEvento(Sefaz4jConfig config, String xmlEventoAssinado) {
-        ValidadorXsd.validar(xmlEventoAssinado, "/schemas/cte/eventoCTe_v4.00.xsd");
+        ValidadorXsd.validar(xmlEventoAssinado, EVENTO_CTE_XSD);
 
         String url = config.getUrlRecepcaoEventoOverride() != null
             ? config.getUrlRecepcaoEventoOverride()
@@ -262,7 +270,7 @@ public final class Sefaz4jCTe {
         String envelope = SoapEnvelopeBuilder.envelopeRecepcaoEvento(xmlEventoAssinado);
         String respostaBruta = SefazHttpClient.postar(
             url,
-            "http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoEventoV4/cteRecepcaoEvento",
+            SOAP_ACTION_RECEPCAO_EVENTO,
             envelope,
             config.getPfxBytes(),
             config.getSenhaPfx(),
@@ -271,10 +279,10 @@ public final class Sefaz4jCTe {
 
         RespostaSefaz resposta = RespostaSefazParser.parsear(respostaBruta, "retEventoCTe");
 
-        // Mesmo padrão de fallback já usado por enviarEProcessar (fase 1) e por
-        // Sefaz4jNFe.enviarEProcessarEvento: cStat/xMotivo do nível do lote/retEventoCTe descrevem o
-        // envelope; o cStat/xMotivo/nProt que realmente importa é o do evento individual dentro do
-        // protocoloXml, quando presente.
+        // protocoloXml (quando presente) É o retEventoCTe/infEvento completo — CTe não tem um nível de
+        // lote separado como o NFe (TRetEvento não tem cStat/xMotivo próprios fora de infEvento). Sem
+        // protocolo (rejeição antes de qualquer infEvento existir), caímos no cStat/xMotivo de nível
+        // superior do próprio retEventoCTe como único fallback disponível.
         String protocoloXml = resposta.getProtocoloXml();
         String cStatFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "cStat") : resposta.getCStat();
         String xMotivoFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "xMotivo") : resposta.getXMotivo();

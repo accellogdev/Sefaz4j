@@ -27,6 +27,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -438,7 +439,10 @@ public class Sefaz4jCTeTest {
 
     @Test
     public void cancelarRetornaEventoRegistrado() {
+        AtomicReference<String> corpoCapturado = new AtomicReference<>();
         servidor.createContext("/evento-cancelamento", exchange -> {
+            String corpoRecebido = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            corpoCapturado.set(corpoRecebido);
             byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
                 "<soap:Body><cteResultMsg xmlns=\"http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoEventoV4\">" +
                 "<retEventoCTe xmlns=\"http://www.portalfiscal.inf.br/cte\" versao=\"4.00\"><infEvento>" +
@@ -468,17 +472,24 @@ public class Sefaz4jCTeTest {
         assertTrue(resultado.isOk());
         assertEquals("135", resultado.getCStat());
         assertEquals("135250000000002", resultado.getNProt());
+        assertTrue(corpoCapturado.get().contains("<tpEvento>110111</tpEvento>"));
+        assertTrue(corpoCapturado.get().contains("versaoEvento=\"4.00\""));
     }
 
+    // TRetEvento (eventoCTeTiposBasico_v4.00.xsd) não tem idLote nem cStat/xMotivo fora de
+    // infEvento — infEvento em si é obrigatório (sem minOccurs="0"), mas seus campos finais
+    // (chCTe/tpEvento/xEvento/nSeqEvento/dhRegEvento/nProt, todos com minOccurs="0") ficam de
+    // fora quando o evento é rejeitado antes de qualquer registro individual, restando só
+    // tpAmb/verAplic/cOrgao/cStat/xMotivo.
     @Test
-    public void cancelarRetornaRejeitadoSemRetEventoQuandoLoteERejeitado() {
+    public void cancelarRetornaRejeitadoQuandoEventoNaoERegistrado() {
         servidor.createContext("/evento-cancelamento-rejeitado", exchange -> {
             byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
                 "<soap:Body><cteResultMsg xmlns=\"http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoEventoV4\">" +
-                "<retEventoCTe xmlns=\"http://www.portalfiscal.inf.br/cte\" versao=\"4.00\">" +
-                "<idLote>1</idLote><tpAmb>2</tpAmb><verAplic>SP_1.0.0</verAplic><cOrgao>35</cOrgao>" +
+                "<retEventoCTe xmlns=\"http://www.portalfiscal.inf.br/cte\" versao=\"4.00\"><infEvento>" +
+                "<tpAmb>2</tpAmb><verAplic>SP_1.0.0</verAplic><cOrgao>35</cOrgao>" +
                 "<cStat>573</cStat><xMotivo>Duplicidade de evento</xMotivo>" +
-                "</retEventoCTe></cteResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+                "</infEvento></retEventoCTe></cteResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(200, resposta.length);
             exchange.getResponseBody().write(resposta);
             exchange.close();
@@ -524,7 +535,10 @@ public class Sefaz4jCTeTest {
 
     @Test
     public void corrigirCartaDeCorrecaoRetornaEventoRegistrado() {
+        AtomicReference<String> corpoCapturado = new AtomicReference<>();
         servidor.createContext("/evento-cce", exchange -> {
+            String corpoRecebido = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            corpoCapturado.set(corpoRecebido);
             byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
                 "<soap:Body><cteResultMsg xmlns=\"http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoEventoV4\">" +
                 "<retEventoCTe xmlns=\"http://www.portalfiscal.inf.br/cte\" versao=\"4.00\"><infEvento>" +
@@ -553,6 +567,8 @@ public class Sefaz4jCTeTest {
         assertTrue(resultado.isOk());
         assertEquals("135", resultado.getCStat());
         assertEquals("135250000000003", resultado.getNProt());
+        assertTrue(corpoCapturado.get().contains("<tpEvento>110110</tpEvento>"));
+        assertTrue(corpoCapturado.get().contains("versaoEvento=\"4.00\""));
     }
 
     @Test

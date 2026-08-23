@@ -235,7 +235,7 @@ ResultadoEvento cancelamento = Sefaz4jCTe.cancelar(config, chaveAcesso, nProtAut
 
 // Emitir uma Carta de Correção: lista de correções estruturadas, não texto livre.
 List<InfCorrecao> correcoes = List.of(
-    new InfCorrecao("ide", "xJust", "Correção do campo tal") // 3-arg: nroItemAlterado fica null
+    new InfCorrecao("ide", "xEmi", "Endereço do emitente corrigido") // 3-arg: nroItemAlterado fica null
 );
 ResultadoEvento cce = Sefaz4jCTe.corrigirCartaDeCorrecao(config, chaveAcesso, correcoes);
 // O nSeqEvento (sequencial, padrão 1) é obrigatório a partir da segunda CC-e do mesmo CT-e.
