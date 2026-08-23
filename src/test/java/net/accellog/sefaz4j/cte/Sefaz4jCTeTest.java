@@ -26,6 +26,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
+import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -518,6 +519,97 @@ public class Sefaz4jCTeTest {
             "chave-invalida",
             "135250000000001",
             "Justificativa de teste com quinze ou mais caracteres"
+        );
+    }
+
+    @Test
+    public void corrigirCartaDeCorrecaoRetornaEventoRegistrado() {
+        servidor.createContext("/evento-cce", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><cteResultMsg xmlns=\"http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoEventoV4\">" +
+                "<retEventoCTe xmlns=\"http://www.portalfiscal.inf.br/cte\" versao=\"4.00\"><infEvento>" +
+                "<tpAmb>2</tpAmb><verAplic>SP_1.0.0</verAplic><cOrgao>35</cOrgao>" +
+                "<cStat>135</cStat><xMotivo>Evento registrado e vinculado ao CT-e</xMotivo>" +
+                "<chCTe>35250812345678000195570010000001231123456789</chCTe>" +
+                "<tpEvento>110110</tpEvento><xEvento>Carta de Correção</xEvento><nSeqEvento>1</nSeqEvento>" +
+                "<dhRegEvento>2025-08-12T10:12:00-03:00</dhRegEvento>" +
+                "<nProt>135250000000003</nProt>" +
+                "</infEvento></retEventoCTe>" +
+                "</cteResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+        config.setUrlRecepcaoEventoOverride("https://localhost:" + servidor.getAddress().getPort() + "/evento-cce");
+
+        ResultadoEvento resultado = Sefaz4jCTe.corrigirCartaDeCorrecao(
+            config,
+            "35250812345678000195570010000001231123456789",
+            List.of(new InfCorrecao("ide", "xEmi", "Endereço do emitente corrigido"))
+        );
+
+        assertTrue(resultado.isOk());
+        assertEquals("135", resultado.getCStat());
+        assertEquals("135250000000003", resultado.getNProt());
+    }
+
+    @Test
+    public void corrigirCartaDeCorrecaoAceitaVariasCorrecoesENSeqEventoExplicito() {
+        servidor.createContext("/evento-cce-multiplo", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><cteResultMsg xmlns=\"http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoEventoV4\">" +
+                "<retEventoCTe xmlns=\"http://www.portalfiscal.inf.br/cte\" versao=\"4.00\"><infEvento>" +
+                "<tpAmb>2</tpAmb><verAplic>SP_1.0.0</verAplic><cOrgao>35</cOrgao>" +
+                "<cStat>135</cStat><xMotivo>Evento registrado e vinculado ao CT-e</xMotivo>" +
+                "<chCTe>35250812345678000195570010000001231123456789</chCTe>" +
+                "<tpEvento>110110</tpEvento><xEvento>Carta de Correção</xEvento><nSeqEvento>2</nSeqEvento>" +
+                "<dhRegEvento>2025-08-12T10:13:00-03:00</dhRegEvento>" +
+                "<nProt>135250000000004</nProt>" +
+                "</infEvento></retEventoCTe>" +
+                "</cteResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+        config.setUrlRecepcaoEventoOverride("https://localhost:" + servidor.getAddress().getPort() + "/evento-cce-multiplo");
+
+        ResultadoEvento resultado = Sefaz4jCTe.corrigirCartaDeCorrecao(
+            config,
+            "35250812345678000195570010000001231123456789",
+            List.of(
+                new InfCorrecao("ide", "xEmi", "Endereço do emitente corrigido"),
+                new InfCorrecao("rem", "xNome", "Nome do remetente corrigido", 1)
+            ),
+            2
+        );
+
+        assertTrue(resultado.isOk());
+        assertEquals("135250000000004", resultado.getNProt());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void corrigirCartaDeCorrecaoRejeitaListaVazia() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jCTe.corrigirCartaDeCorrecao(
+            config,
+            "35250812345678000195570010000001231123456789",
+            List.of()
+        );
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void corrigirCartaDeCorrecaoRejeitaChaveAcessoInvalida() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jCTe.corrigirCartaDeCorrecao(
+            config,
+            "chave-invalida",
+            List.of(new InfCorrecao("ide", "xEmi", "Endereço do emitente corrigido"))
         );
     }
 

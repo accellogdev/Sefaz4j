@@ -24,6 +24,7 @@ import javax.xml.transform.stream.StreamResult;
 import java.io.ByteArrayInputStream;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 public final class Sefaz4jCTe {
 
@@ -33,6 +34,15 @@ public final class Sefaz4jCTe {
     private static final String PREFIXO_SECAO_CTE = "CTE_";
     private static final int TAMANHO_MINIMO_JUSTIFICATIVA = 15;
     private static final int TAMANHO_MAXIMO_JUSTIFICATIVA = 255;
+
+    private static final String X_COND_USO_CCE_CTE =
+        "A Carta de Correção é disciplinada pelo Art. 58-B do CONVÊNIO/SINIEF 06/89: Fica permitida a " +
+        "utilização de carta de correção, para regularização de erro ocorrido na emissão de documentos " +
+        "fiscais relativos à prestação de serviço de transporte, desde que o erro não esteja relacionado " +
+        "com: I - as variáveis que determinam o valor do imposto tais como: base de cálculo, alíquota, " +
+        "diferença de preço, quantidade, valor da prestação;II - a correção de dados cadastrais que " +
+        "implique mudança do emitente, tomador, remetente ou do destinatário;III - a data de emissão ou " +
+        "de saída.";
 
     private Sefaz4jCTe() {
     }
@@ -115,6 +125,54 @@ public final class Sefaz4jCTe {
 
         Document documento = EventoCTeXmlBuilder.montar(
             cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110111", 1, "4.00", detEvento
+        );
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), CTE_NAMESPACE, "infEvento");
+        String xmlEventoAssinado = serializarDocumento(documento);
+
+        return enviarEProcessarEvento(config, xmlEventoAssinado);
+    }
+
+    public static ResultadoEvento corrigirCartaDeCorrecao(Sefaz4jConfig config, String chaveAcesso, List<InfCorrecao> correcoes) {
+        return corrigirCartaDeCorrecao(config, chaveAcesso, correcoes, 1);
+    }
+
+    public static ResultadoEvento corrigirCartaDeCorrecao(Sefaz4jConfig config, String chaveAcesso, List<InfCorrecao> correcoes, int nSeqEvento) {
+        exigirChaveAcessoValida(chaveAcesso);
+        if (correcoes == null || correcoes.isEmpty()) {
+            throw new IllegalArgumentException("A lista 'correcoes' deve ter ao menos um item");
+        }
+        for (InfCorrecao correcao : correcoes) {
+            exigirTamanho(correcao.getGrupoAlterado(), 1, 20, "grupoAlterado");
+            exigirTamanho(correcao.getCampoAlterado(), 1, 20, "campoAlterado");
+            exigirTamanho(correcao.getValorAlterado(), 1, 500, "valorAlterado");
+        }
+
+        String cUF = chaveAcesso.substring(0, 2);
+        String cnpj = chaveAcesso.substring(6, 20);
+
+        StringBuilder infCorrecoesXml = new StringBuilder();
+        for (InfCorrecao correcao : correcoes) {
+            infCorrecoesXml.append("<infCorrecao>")
+                .append("<grupoAlterado>").append(escaparTextoXml(correcao.getGrupoAlterado())).append("</grupoAlterado>")
+                .append("<campoAlterado>").append(escaparTextoXml(correcao.getCampoAlterado())).append("</campoAlterado>")
+                .append("<valorAlterado>").append(escaparTextoXml(correcao.getValorAlterado())).append("</valorAlterado>");
+            if (correcao.getNroItemAlterado() != null) {
+                infCorrecoesXml.append("<nroItemAlterado>").append(correcao.getNroItemAlterado()).append("</nroItemAlterado>");
+            }
+            infCorrecoesXml.append("</infCorrecao>");
+        }
+
+        String evCCeCTeFragmento = "<evCCeCTe xmlns=\"" + CTE_NAMESPACE + "\">" +
+            "<descEvento>Carta de Correção</descEvento>" +
+            infCorrecoesXml +
+            "<xCondUso>" + escaparTextoXml(X_COND_USO_CCE_CTE) + "</xCondUso>" +
+            "</evCCeCTe>";
+        ValidadorXsd.validar(evCCeCTeFragmento, "/schemas/cte/evCCeCTe_v4.00.xsd");
+
+        String detEvento = "<detEvento versaoEvento=\"4.00\">" + evCCeCTeFragmento + "</detEvento>";
+
+        Document documento = EventoCTeXmlBuilder.montar(
+            cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110110", nSeqEvento, "4.00", detEvento
         );
         AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), CTE_NAMESPACE, "infEvento");
         String xmlEventoAssinado = serializarDocumento(documento);
