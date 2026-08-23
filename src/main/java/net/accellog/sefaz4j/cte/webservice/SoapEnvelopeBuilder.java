@@ -10,7 +10,7 @@ public final class SoapEnvelopeBuilder {
             "xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" " +
             "xmlns:soap12=\"http://www.w3.org/2003/05/soap-envelope\">" +
             "<soap12:Body>" +
-            "<cteDadosMsg xmlns=\"http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoSinc\">" +
+            "<cteDadosMsg xmlns=\"http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoSincV4\">" +
             cteXmlAssinado +
             "</cteDadosMsg>" +
             "</soap12:Body>" +

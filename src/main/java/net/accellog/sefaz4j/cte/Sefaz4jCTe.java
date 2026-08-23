@@ -102,7 +102,7 @@ public final class Sefaz4jCTe {
         String envelope = SoapEnvelopeBuilder.envelopeRecepcaoSinc(xmlAssinado);
         String respostaBruta = SefazHttpClient.postar(
             url,
-            "http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoSinc/cteRecepcaoSinc",
+            "http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoSincV4/cteRecepcao",
             envelope,
             config.getPfxBytes(),
             config.getSenhaPfx(),

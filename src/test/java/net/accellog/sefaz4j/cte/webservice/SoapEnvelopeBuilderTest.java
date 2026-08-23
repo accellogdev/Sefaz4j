@@ -13,7 +13,7 @@ public class SoapEnvelopeBuilderTest {
         String envelope = SoapEnvelopeBuilder.envelopeRecepcaoSinc(cteAssinado);
 
         assertTrue(envelope.contains("<soap12:Envelope"));
-        assertTrue(envelope.contains("http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoSinc"));
+        assertTrue(envelope.contains("http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoSincV4"));
         assertTrue(envelope.contains(cteAssinado));
     }
 }
