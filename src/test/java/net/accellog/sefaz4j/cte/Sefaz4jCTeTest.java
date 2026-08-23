@@ -371,6 +371,70 @@ public class Sefaz4jCTeTest {
         }
     }
 
+    @Test
+    public void consultarSituacaoRetornaAutorizada() {
+        servidor.createContext("/consulta", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><cteResultMsg xmlns=\"http://www.portalfiscal.inf.br/cte/wsdl/CTeConsultaV4\">" +
+                "<retConsSitCTe xmlns=\"http://www.portalfiscal.inf.br/cte\" versao=\"4.00\">" +
+                "<tpAmb>2</tpAmb><verAplic>SP_1.0.0</verAplic>" +
+                "<cStat>100</cStat><xMotivo>Autorizado o uso do CT-e</xMotivo>" +
+                "<cUF>35</cUF><chCTe>35250812345678000195570010000001231123456789</chCTe>" +
+                "<protCTe versao=\"4.00\"><infProt>" +
+                "<tpAmb>2</tpAmb><verAplic>SP_1.0.0</verAplic>" +
+                "<chCTe>35250812345678000195570010000001231123456789</chCTe>" +
+                "<dhRecbto>2025-08-12T10:05:00-03:00</dhRecbto>" +
+                "<nProt>135250000000001</nProt>" +
+                "<cStat>100</cStat><xMotivo>Autorizado o uso do CT-e</xMotivo>" +
+                "</infProt></protCTe>" +
+                "</retConsSitCTe></cteResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+        config.setUrlConsultaProtocoloOverride("https://localhost:" + servidor.getAddress().getPort() + "/consulta");
+
+        ResultadoConsulta resultado = Sefaz4jCTe.consultarSituacao(config, "35250812345678000195570010000001231123456789");
+
+        assertTrue(resultado.isOk());
+        assertEquals("100", resultado.getCStat());
+        assertEquals("35250812345678000195570010000001231123456789", resultado.getChCTe());
+        assertTrue(resultado.getProtocoloXml().contains("<nProt>135250000000001</nProt>"));
+    }
+
+    @Test
+    public void consultarSituacaoRetornaNaoAutorizadaSemLancarExcecao() {
+        servidor.createContext("/consulta-inexistente", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><cteResultMsg xmlns=\"http://www.portalfiscal.inf.br/cte/wsdl/CTeConsultaV4\">" +
+                "<retConsSitCTe xmlns=\"http://www.portalfiscal.inf.br/cte\" versao=\"4.00\">" +
+                "<tpAmb>2</tpAmb><verAplic>SP_1.0.0</verAplic>" +
+                "<cStat>656</cStat><xMotivo>Consulta a CT-e não permitida para o Ambiente de Produção</xMotivo>" +
+                "<cUF>35</cUF><chCTe>35250812345678000195570010000001231123456789</chCTe>" +
+                "</retConsSitCTe></cteResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+        config.setUrlConsultaProtocoloOverride("https://localhost:" + servidor.getAddress().getPort() + "/consulta-inexistente");
+
+        ResultadoConsulta resultado = Sefaz4jCTe.consultarSituacao(config, "35250812345678000195570010000001231123456789");
+
+        assertFalse(resultado.isOk());
+        assertEquals("656", resultado.getCStat());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void consultarSituacaoRejeitaChaveAcessoInvalida() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jCTe.consultarSituacao(config, "chave-invalida");
+    }
+
     /**
      * CT-e mínimo que passa integralmente pelo {@code cte_v4.00.xsd} — foi gerado montando um
      * {@code TCTe} via os tipos JAXB de {@code net.accellog.sefaz4j.cte.model} com todo o conjunto

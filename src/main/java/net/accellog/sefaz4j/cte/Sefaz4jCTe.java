@@ -30,6 +30,8 @@ public final class Sefaz4jCTe {
     private static final String CTE_XSD_RAIZ = "/schemas/cte/cte_v4.00.xsd";
     private static final String CTE_SERVICOS_INI = "/endpoints/cte-servicos.ini";
     private static final String PREFIXO_SECAO_CTE = "CTE_";
+    private static final int TAMANHO_MINIMO_JUSTIFICATIVA = 15;
+    private static final int TAMANHO_MAXIMO_JUSTIFICATIVA = 255;
 
     private Sefaz4jCTe() {
     }
@@ -53,6 +55,42 @@ public final class Sefaz4jCTe {
 
     public static ResultadoEmissao enviarXmlAssinado(Sefaz4jConfig config, String xmlAssinado) {
         return enviarEProcessar(config, xmlAssinado);
+    }
+
+    public static ResultadoConsulta consultarSituacao(Sefaz4jConfig config, String chaveAcesso) {
+        exigirChaveAcessoValida(chaveAcesso);
+
+        String xmlConsulta = "<consSitCTe xmlns=\"" + CTE_NAMESPACE + "\" versao=\"4.00\">" +
+            "<tpAmb>" + config.getAmbiente().getTpAmb() + "</tpAmb>" +
+            "<xServ>CONSULTAR</xServ>" +
+            "<chCTe>" + chaveAcesso + "</chCTe>" +
+            "</consSitCTe>";
+
+        ValidadorXsd.validar(xmlConsulta, "/schemas/cte/consSitCTe_v4.00.xsd");
+
+        String url = config.getUrlConsultaProtocoloOverride() != null
+            ? config.getUrlConsultaProtocoloOverride()
+            : EndpointResolver.resolver(CTE_SERVICOS_INI, PREFIXO_SECAO_CTE, config.getUf(), config.getAmbiente(), Servico.CTE_CONSULTA_PROTOCOLO.getChaveIni());
+
+        String envelope = SoapEnvelopeBuilder.envelopeConsultaSituacao(xmlConsulta);
+        String respostaBruta = SefazHttpClient.postar(
+            url,
+            "http://www.portalfiscal.inf.br/cte/wsdl/CTeConsultaV4/cteConsultaCT",
+            envelope,
+            config.getPfxBytes(),
+            config.getSenhaPfx(),
+            config.getTimeout()
+        );
+
+        RespostaSefaz resposta = RespostaSefazParser.parsear(respostaBruta, "protCTe", "chCTe");
+
+        return new ResultadoConsulta(
+            "100".equals(resposta.getCStat()),
+            resposta.getCStat(),
+            resposta.getXMotivo(),
+            resposta.getChaveDocumento(),
+            resposta.getProtocoloXml()
+        );
     }
 
     private static void verificarTpAmbCompativel(Sefaz4jConfig config, TCTe cte) {
@@ -153,5 +191,30 @@ public final class Sefaz4jCTe {
         StringWriter writer = new StringWriter();
         transformer.transform(new DOMSource(documento), new StreamResult(writer));
         return writer.toString();
+    }
+
+    private static void exigirTamanho(String texto, int tamanhoMinimo, int tamanhoMaximo, String nomeCampo) {
+        if (texto == null || texto.length() < tamanhoMinimo || texto.length() > tamanhoMaximo) {
+            throw new IllegalArgumentException(
+                "O campo '" + nomeCampo + "' deve ter entre " + tamanhoMinimo + " e " + tamanhoMaximo + " caracteres"
+            );
+        }
+    }
+
+    private static void exigirChaveAcessoValida(String chaveAcesso) {
+        if (chaveAcesso == null || !chaveAcesso.matches("[0-9]{44}")) {
+            throw new IllegalArgumentException(
+                "O campo 'chaveAcesso' deve ter exatamente 44 dígitos numéricos, obteve: '" + chaveAcesso + "'"
+            );
+        }
+    }
+
+    private static String escaparTextoXml(String texto) {
+        return texto
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&apos;");
     }
 }
