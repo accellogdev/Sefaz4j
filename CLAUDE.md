@@ -7,8 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Sefaz4j is a pure-Java library (no framework, no `main`/`spring-boot:run`) that builds, signs,
 XSD-validates, and transmits Brazilian NFe (electronic invoices) 4.00 to SEFAZ web services over
 mutual-TLS SOAP. It targets the A1 (software-certificate) emission flow. CTe (Conhecimento de
-Transporte Eletrônico) 4.00 emission was added alongside NFe as the library's second document type
-(see "## CTe (fase 1: emissão)" below); the two share the same root infrastructure packages.
+Transporte Eletrônico) 4.00 emission was added alongside NFe as the library's second document type,
+later joined by its post-emission lifecycle (see "## CTe (emissão + ciclo de vida pós-emissão)" below);
+the two share the same root infrastructure packages.
 
 ## Build & test
 
@@ -66,12 +67,16 @@ propagates as one of three unchecked exception types instead:
   the lot still being `103` after `ReciboPoller` exhausts its polling attempts (an ambiguous outcome, deliberately
   not reported as `ok=false` — the caller must not blindly retry an NFe of unknown status).
 
-## CTe (fase 1: emissão)
+## CTe (emissão + ciclo de vida pós-emissão)
 
-`net.accellog.sefaz4j.cte` is the second document type, mirroring the NFe package shape but covering
-only emission (fase 1) — no consulta/cancelamento/CC-e/inutilização for CTe yet.
+`net.accellog.sefaz4j.cte` is the second document type, mirroring the NFe package shape. Fase 1 covered
+only emission; fase 2 added the post-emission lifecycle (`consultarSituacao`/`cancelar`/
+`corrigirCartaDeCorrecao`). **Inutilização is permanently out of scope for CTe** — SEFAZ discontinued it
+for CTe 4.00 (confirmed against the ACBr reference implementation: `ACBrCTeWebServices.pas` raises an
+exception for any v4.00 inutilização call, and no `CTeInutilizacao_4.00` key exists in any UF section of
+`ACBrCTeServicos.ini`), so there is no `Sefaz4jCTe.inutilizar` and none is planned.
 
-- **`Sefaz4jCTe`** — the facade, only two public methods. `emitir(Sefaz4jConfig, TCTe)` first checks
+- **`Sefaz4jCTe`** — the facade. `emitir(Sefaz4jConfig, TCTe)` first checks
   that `infCte/ide/tpAmb` (when present) matches the configured `Ambiente`'s `tpAmb`, throwing
   `IllegalArgumentException` early otherwise (the same tpAmb-vs-Ambiente safety guard `Sefaz4jNFe.emitir`
   has); it then builds the chave de acesso + `Document` via `CTeXmlBuilder`, signs the `infCte` element,
@@ -79,14 +84,38 @@ only emission (fase 1) — no consulta/cancelamento/CC-e/inutilização for CTe 
   has no `enviCTe_v4.00.xsd` (only v2.00/v3.00 have one), the root element sent to `CTeRecepcaoSinc` is
   the `<CTe>` itself, and the `retCTe` response's `cStat`/`protCTe` are already final. `Sefaz4jCTe` has
   no `ReciboPoller` equivalent for this reason. `enviarXmlAssinado(Sefaz4jConfig, String)` skips straight
-  to validate+transmit for an already-signed XML.
+  to validate+transmit for an already-signed XML. `consultarSituacao(Sefaz4jConfig, String chaveAcesso)`
+  consulta o status de um CT-e já transmitido, sem assinar nada, retornando `ResultadoConsulta`.
+  `cancelar(Sefaz4jConfig, String chaveAcesso, String nProt, String justificativa)` (tpEvento `110111`,
+  `nProt` com 15 dígitos, `justificativa` com 15 a 255 caracteres) e
+  `corrigirCartaDeCorrecao(Sefaz4jConfig, String chaveAcesso, List<InfCorrecao> correcoes[, int
+  nSeqEvento])` (tpEvento `110110`) montam e assinam um evento (`infEvento`, não `infCte`) e o enviam a
+  `RecepcaoEvento_4.00`, retornando `ResultadoEvento`.
+- **CC-e do CTe usa uma lista estruturada, não texto livre.** Ao contrário do
+  `corrigirCartaDeCorrecao` da NFe (que recebe uma `String textoCorrecao`), o do CTe recebe
+  `List<InfCorrecao>`: o XSD `evCCeCTe_v4.00.xsd` não tem campo de texto livre, só o grupo repetível
+  `infCorrecao` (`grupoAlterado`/`campoAlterado`/`valorAlterado`, mais o `nroItemAlterado` opcional).
+  `InfCorrecao` é um DTO imutável com construtores de 3 e 4 argumentos — o de 3 deixa
+  `getNroItemAlterado()` como `null`.
+- **Validação de evento em duas passadas.** Ao contrário da NFe (que tem um schema "leiaute" próprio por
+  operação, `leiauteEventoCancNFe_v1.00.xsd`/`leiauteCCe_v1.00.xsd`), o CTe não tem um schema
+  per-operation dedicado — então cada evento é validado duas vezes: o fragmento específico
+  (`evCancCTe_v4.00.xsd`/`evCCeCTe_v4.00.xsd`) antes de embrulhá-lo em `detEvento`, e o documento
+  `eventoCTe` completo e assinado contra o schema genérico `eventoCTe_v4.00.xsd` logo antes de
+  transmitir.
 - **`net.accellog.sefaz4j.cte.Sefaz4jConfig`** — `UF`, `Ambiente`, PFX bytes + password, optional
-  `urlAutorizacaoOverride` (constructor arg, or fluent `setUrlAutorizacaoOverride`), and a fluent
-  `setTimeout` (default 30s). No polling-related setters — there is nothing to poll.
+  `urlAutorizacaoOverride` (constructor arg, or fluent `setUrlAutorizacaoOverride`), fluent
+  `setUrlConsultaProtocoloOverride`/`setUrlRecepcaoEventoOverride` for the fase-2 endpoints, and a
+  fluent `setTimeout` (default 30s). No polling-related setters — there is nothing to poll.
 - **`net.accellog.sefaz4j.cte.ResultadoEmissao`** — same shape as the NFe one: `isOk()` is `true` only
   when `cStat` is `100`; `getCStat()`/`getXMotivo()` always populated; `getChCTe()` (chave de acesso);
   `getXmlAutorizado()` is a single well-formed XML document, wrapped in `<cteProc>` when a `protCTe` is
   present.
+- **`net.accellog.sefaz4j.cte.ResultadoConsulta`/`ResultadoEvento`** — mesmo formato de
+  `ResultadoEmissao`: `isOk()` estrito para o `cStat` de sucesso específico da operação (`100` para
+  consulta, `135` para cancelamento/CC-e), `getCStat()`/`getXMotivo()` sempre preenchidos.
+  `ResultadoConsulta` tem `getChCTe()` (em vez do `getChNFe()` da NFe) e `getProtocoloXml()`;
+  `ResultadoEvento` tem `getNProt()`/`getProtocoloXml()`, igual à NFe.
 - **`infModal` is `xs:any` — deliberately untyped/unvalidated.** `cteTiposBasico_v4.00.xsd` declares
   `infCTeNorm/infModal` as an `<xs:any processContents="skip"/>`, so the official layout itself delegates
   modal-specific content (rodoviário/aéreo/aquaviário/ferroviário/dutoviário, each with its own XSD) to
@@ -112,12 +141,14 @@ only emission (fase 1) — no consulta/cancelamento/CC-e/inutilização for CTe 
   `SSLContext`/`HttpClient` caching), `RespostaSefazParser`, `RespostaSefaz`, `ComunicacaoException`.
 - `net.accellog.sefaz4j.nfe.webservice` — `SoapEnvelopeBuilder`, `ReciboPoller` (polls `NFeRetAutorizacao4` while `cStat == 103`);
   NFe-specific, not shared.
-- `net.accellog.sefaz4j.cte.webservice` — `SoapEnvelopeBuilder` with `envelopeRecepcaoSinc(String)`; CTe-specific, not shared
+- `net.accellog.sefaz4j.cte.webservice` — `SoapEnvelopeBuilder` with `envelopeRecepcaoSinc(String)`/
+  `envelopeConsultaSituacao(String)`/`envelopeRecepcaoEvento(String)`; CTe-specific, not shared
   (no `ReciboPoller` equivalent — see the CTe section above).
 - `net.accellog.sefaz4j.endpoints` (shared) — `EndpointResolver` + `UF`/`Ambiente`, backed by `src/main/resources/endpoints/nfe-servicos.ini`
   (NFe) and `cte-servicos.ini` (CTe), selected via a path/section-prefix argument to `EndpointResolver.resolver(...)`.
 - `net.accellog.sefaz4j.nfe.endpoints` — `Servico`; NFe-specific, not shared.
-- `net.accellog.sefaz4j.cte.endpoints` — `Servico` (`CTE_RECEPCAO_SINC` — the only value in this phase); CTe-specific, not shared.
+- `net.accellog.sefaz4j.cte.endpoints` — `Servico` (`CTE_RECEPCAO_SINC`/`CTE_CONSULTA_PROTOCOLO`/
+  `CTE_RECEPCAO_EVENTO`); CTe-specific, not shared.
 - `net.accellog.sefaz4j.nfe.model` — **generated** JAXB classes (`TNFe`, `ObjectFactory`, etc.) — do not hand-edit, see below.
 - `net.accellog.sefaz4j.cte.model` — **generated** JAXB classes (`TCTe`, `ObjectFactory`, etc.), from `cte_v4.00.xsd` — do not hand-edit.
 

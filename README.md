@@ -2,8 +2,10 @@
 
 Biblioteca Java pura (sem framework, sem `main`) para emissão e comunicação com a SEFAZ dos
 documentos fiscais eletrônicos brasileiros. O objetivo final é cobrir **NFe**, **CTe**, **MDFe** e
-**NFSe**; hoje estão implementados o **ciclo de vida completo da NFe 4.00** e a **emissão do CTe
-4.00** — MDFe e NFSe, e o ciclo de vida pós-emissão do CTe, ainda não têm código neste repositório.
+**NFSe**; hoje estão implementados o **ciclo de vida completo da NFe 4.00** e o **ciclo de vida
+completo do CTe 4.00** (emissão + consulta/cancelamento/CC-e — a inutilização foi descontinuada pela
+SEFAZ para o CTe 4.00, ver seção do CTe abaixo) — MDFe e NFSe ainda não têm código neste
+repositório.
 
 O que o pacote de NFe já faz: monta o XML a partir de um objeto JAXB (`TNFe`), calcula a chave de
 acesso, assina digitalmente (XML-DSig), valida contra a XSD oficial da SEFAZ, transmite via SOAP
@@ -12,10 +14,13 @@ sobre TLS mútuo (certificado A1) e, se o lote ficar "em processamento", faz o p
 pós-emissão: consulta de situação, cancelamento, Carta de Correção (CC-e) e inutilização de faixa
 de numeração.
 
-O pacote de CTe cobre, por enquanto, só a emissão: monta o XML a partir de um `TCTe` (JAXB), calcula
-a chave de acesso, assina, valida contra a XSD oficial e transmite via `CTeRecepcaoSinc` — um
-serviço **síncrono** (sem lote, sem `indSinc`, sem polling: a chamada HTTP já devolve o `cStat`/
-`protCTe` definitivos).
+O pacote de CTe cobre a emissão — monta o XML a partir de um `TCTe` (JAXB), calcula a chave de
+acesso, assina, valida contra a XSD oficial e transmite via `CTeRecepcaoSinc`, um serviço
+**síncrono** (sem lote, sem `indSinc`, sem polling: a chamada HTTP já devolve o `cStat`/`protCTe`
+definitivos) — e também o ciclo de vida pós-emissão: consulta de situação, cancelamento e Carta de
+Correção (CC-e). A inutilização de faixa de numeração **não** está implementada para CTe: a SEFAZ a
+descontinuou para o CTe 4.00 (não há chave `CTeInutilizacao_4.00` em nenhuma UF do `ACBrCTeServicos.ini`
+de referência, e a própria ACBr recusa a chamada para essa versão).
 
 ## Requisitos
 
@@ -154,10 +159,11 @@ Ajuste os parâmetros de polling e timeout com os setters fluentes de `Sefaz4jCo
 
 ## CTe
 
-O CTe (Conhecimento de Transporte Eletrônico) é o segundo documento coberto pela lib — por
-enquanto só a emissão (`net.accellog.sefaz4j.cte`, fase 1). A API espelha a do NFe, mas é mais
-simples porque o serviço de recepção do CTe 4.00 é síncrono: não há lote/`indSinc`/polling — a
-própria resposta HTTP já traz o `cStat`/`protCTe` definitivos.
+O CTe (Conhecimento de Transporte Eletrônico) é o segundo documento coberto pela lib
+(`net.accellog.sefaz4j.cte`), com emissão e ciclo de vida pós-emissão (consulta/cancelamento/CC-e).
+A API espelha a do NFe, mas a emissão é mais simples porque o serviço de recepção do CTe 4.00 é
+síncrono: não há lote/`indSinc`/polling — a própria resposta HTTP já traz o `cStat`/`protCTe`
+definitivos.
 
 ```java
 import net.accellog.sefaz4j.cte.ResultadoEmissao;
@@ -204,6 +210,43 @@ As mesmas 3 exceções técnicas do NFe (`CertificadoException`/`ValidacaoXsdExc
 `ComunicacaoException`) valem para o CTe; como não há polling nesta fase, `ComunicacaoException`
 não tem o caso de lote "ainda em processamento".
 
+### Ciclo de vida pós-emissão (CTe)
+
+Assim como no NFe, `Sefaz4jCTe` também cobre consulta, cancelamento e Carta de Correção — sem JAXB,
+XML montado por concatenação de string e sempre validado contra a XSD oficial antes de transmitir.
+A diferença mais visível para quem já usa o NFe: a Carta de Correção do CTe recebe uma lista
+estruturada de correções (`List<InfCorrecao>`), não um texto livre — o XSD `evCCeCTe_v4.00.xsd` não
+tem campo de texto livre, só o grupo repetível `grupoAlterado`/`campoAlterado`/`valorAlterado`
+(+ `nroItemAlterado` opcional):
+
+```java
+import net.accellog.sefaz4j.cte.InfCorrecao;
+import net.accellog.sefaz4j.cte.ResultadoConsulta;
+import net.accellog.sefaz4j.cte.ResultadoEvento;
+
+import java.util.List;
+
+// Consultar a situação de um CT-e já transmitido.
+ResultadoConsulta consulta = Sefaz4jCTe.consultarSituacao(config, chaveAcesso);
+
+// Cancelar um CT-e autorizado (chave de acesso, número do protocolo de
+// autorização e uma justificativa com 15 a 255 caracteres).
+ResultadoEvento cancelamento = Sefaz4jCTe.cancelar(config, chaveAcesso, nProtAutorizacao, justificativa);
+
+// Emitir uma Carta de Correção: lista de correções estruturadas, não texto livre.
+List<InfCorrecao> correcoes = List.of(
+    new InfCorrecao("ide", "xJust", "Correção do campo tal") // 3-arg: nroItemAlterado fica null
+);
+ResultadoEvento cce = Sefaz4jCTe.corrigirCartaDeCorrecao(config, chaveAcesso, correcoes);
+// O nSeqEvento (sequencial, padrão 1) é obrigatório a partir da segunda CC-e do mesmo CT-e.
+ResultadoEvento segundaCce = Sefaz4jCTe.corrigirCartaDeCorrecao(config, chaveAcesso, correcoes, 2);
+```
+
+`ResultadoConsulta` e `ResultadoEvento` do CTe seguem o mesmo formato do `ResultadoEmissao`:
+`isOk()` é estrito para o `cStat` de sucesso específico da operação (`100` para consulta, `135`
+para cancelamento/CC-e), com `getCStat()`/`getXMotivo()` sempre preenchidos. Não há
+`Sefaz4jCTe.inutilizar` — inutilização é permanentemente fora de escopo para CTe (ver acima).
+
 ## Como testar
 
 ```bash
@@ -231,9 +274,9 @@ mvn test -Pintegration-tests
 
 Um consumidor de NFe precisa do pacote raiz `net.accellog.sefaz4j.nfe` (a fachada `Sefaz4jNFe` e os
 tipos de config/resultado); um consumidor de CTe, do `net.accellog.sefaz4j.cte` (fachada
-`Sefaz4jCTe`, fase 1 só com emissão). Os demais pacotes são implementação interna, e as peças de
-infraestrutura genéricas (`chave`, `assinatura`, `validacao`, `webservice`, `endpoints`) ficam na
-raiz e são compartilhadas pelos dois documentos:
+`Sefaz4jCTe`, com emissão e ciclo de vida pós-emissão). Os demais pacotes são implementação
+interna, e as peças de infraestrutura genéricas (`chave`, `assinatura`, `validacao`, `webservice`,
+`endpoints`) ficam na raiz e são compartilhadas pelos dois documentos:
 
 - `chave` — cálculo da chave de acesso de 44 dígitos (mod-11)
 - `nfe.xml` / `cte.xml` — montagem do DOM a partir do `TNFe`/`TCTe`
@@ -250,6 +293,6 @@ raiz e são compartilhadas pelos dois documentos:
 - [x] NFe — envio/autorização (4.00)
 - [x] NFe — ciclo de vida pós-emissão (consulta/cancelamento/CC-e/inutilização)
 - [x] CTe — emissão (4.00)
-- [ ] CTe — ciclo de vida pós-emissão
+- [x] CTe — ciclo de vida pós-emissão (consulta/cancelamento/CC-e — inutilização descontinuada pela SEFAZ)
 - [ ] MDFe
 - [ ] NFSe
