@@ -267,7 +267,11 @@ just for one version. There is no `Sefaz4jMDFe.inutilizar` and none is planned.
   - `incluirCondutor(Sefaz4jConfig config, String chaveAcesso, String xNome, String cpf):
     ResultadoEvento` — tpEvento `110114`; unlike `cancelar`/`encerrar`, takes **no `nProt`** —
     `evIncCondutorMDFe`'s schema has no such field, because adding a driver mid-manifest isn't tied to
-    the original authorization protocol the way cancelling or closing the manifest is.
+    the original authorization protocol the way cancelling or closing the manifest is. This 4-arg form
+    delegates to a 5th-arg overload `incluirCondutor(..., int nSeqEvento)` with `nSeqEvento=1`, the
+    same overload pattern `Sefaz4jCTe`/`Sefaz4jNFe`'s `corrigirCartaDeCorrecao` already use — needed
+    because `evIncCondutorMDFe_v3.00.xsd` only allows one `condutor` per event, so a second driver on
+    the same manifest requires a second event with `nSeqEvento=2`.
   - All three event methods build the event via the shared `EventoMDFeXmlBuilder.montar(...)`, sign
     `infEvento`, XSD-validate the event-specific fragment first (`evCancMDFe_v3.00.xsd`/
     `evEncMDFe_v3.00.xsd`/`evIncCondutorMDFe_v3.00.xsd`) and then the assembled `eventoMDFe_v3.00.xsd`

@@ -266,6 +266,10 @@ public final class Sefaz4jMDFe {
     }
 
     public static ResultadoEvento incluirCondutor(Sefaz4jConfig config, String chaveAcesso, String xNome, String cpf) {
+        return incluirCondutor(config, chaveAcesso, xNome, cpf, 1);
+    }
+
+    public static ResultadoEvento incluirCondutor(Sefaz4jConfig config, String chaveAcesso, String xNome, String cpf, int nSeqEvento) {
         exigirChaveAcessoValida(chaveAcesso);
 
         String cUF = chaveAcesso.substring(0, 2);
@@ -282,7 +286,7 @@ public final class Sefaz4jMDFe {
 
         String detEvento = "<detEvento versaoEvento=\"" + MDFE_VERSAO + "\">" + evIncCondutorMDFeFragmento + "</detEvento>";
 
-        Document documento = EventoMDFeXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110114", 1, MDFE_VERSAO, detEvento);
+        Document documento = EventoMDFeXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110114", nSeqEvento, MDFE_VERSAO, detEvento);
         AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), MDFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
         String xmlEventoAssinado = serializarDocumento(documento);
 

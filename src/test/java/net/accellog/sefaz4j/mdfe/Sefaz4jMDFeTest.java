@@ -587,6 +587,48 @@ public class Sefaz4jMDFeTest {
         assertTrue(corpoCapturado.get().contains("<CPF>12345678909</CPF>"));
     }
 
+    // Mesmo papel de Sefaz4jCTeTest para corrigirCartaDeCorrecao(config, chave, correcoes, nSeqEvento):
+    // evIncCondutorMDFe_v3.00.xsd só permite um <condutor> por evento, então incluir um segundo
+    // condutor no mesmo manifesto exige um segundo evento com nSeqEvento=2 — a variante de 4
+    // argumentos sempre envia nSeqEvento=1 e não consegue expressar isso.
+    @Test
+    public void incluirCondutorComNSeqEventoExplicitoEnviaSequenciaCorreta() {
+        AtomicReference<String> corpoCapturado = new AtomicReference<>();
+        servidor.createContext("/evento-condutor-seq2", exchange -> {
+            String corpoRecebido = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            corpoCapturado.set(corpoRecebido);
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><mdfeResultMsg xmlns=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeRecepcaoEvento\">" +
+                "<retEventoMDFe xmlns=\"http://www.portalfiscal.inf.br/mdfe\" versao=\"3.00\"><infEvento>" +
+                "<tpAmb>2</tpAmb><verAplic>RS_1.0.0</verAplic><cOrgao>35</cOrgao>" +
+                "<cStat>135</cStat><xMotivo>Evento registrado e vinculado ao MDF-e</xMotivo>" +
+                "<chMDFe>35250812345678000195580010000001231123456789</chMDFe>" +
+                "<tpEvento>110114</tpEvento><xEvento>Inclusao Condutor</xEvento><nSeqEvento>2</nSeqEvento>" +
+                "<dhRegEvento>2025-08-12T10:17:00-03:00</dhRegEvento>" +
+                "</infEvento></retEventoMDFe>" +
+                "</mdfeResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+        config.setUrlRecepcaoEventoOverride("https://localhost:" + servidor.getAddress().getPort() + "/evento-condutor-seq2");
+
+        ResultadoEvento resultado = Sefaz4jMDFe.incluirCondutor(
+            config,
+            "35250812345678000195580010000001231123456789",
+            "Maria Souza",
+            "98765432100",
+            2
+        );
+
+        assertTrue(resultado.isOk());
+        assertEquals("135", resultado.getCStat());
+        assertTrue(corpoCapturado.get().contains("<nSeqEvento>2</nSeqEvento>"));
+        assertTrue(corpoCapturado.get().contains("<xNome>Maria Souza</xNome>"));
+    }
+
     @Test(expected = IllegalArgumentException.class)
     public void incluirCondutorRejeitaChaveAcessoInvalida() {
         Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
