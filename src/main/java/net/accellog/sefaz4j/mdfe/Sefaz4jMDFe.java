@@ -215,9 +215,7 @@ public final class Sefaz4jMDFe {
     public static ResultadoEvento cancelar(Sefaz4jConfig config, String chaveAcesso, String nProt, String justificativa) {
         exigirChaveAcessoValida(chaveAcesso);
         exigirTamanho(justificativa, TAMANHO_MINIMO_JUSTIFICATIVA, TAMANHO_MAXIMO_JUSTIFICATIVA, "justificativa do cancelamento");
-        if (nProt == null || !nProt.matches("[0-9]{15}")) {
-            throw new IllegalArgumentException("O campo 'nProt' deve ter exatamente 15 dígitos numéricos, obteve: '" + nProt + "'");
-        }
+        exigirNProtValido(nProt);
 
         String cUF = chaveAcesso.substring(0, 2);
         String cnpj = chaveAcesso.substring(6, 20);
@@ -240,9 +238,7 @@ public final class Sefaz4jMDFe {
 
     public static ResultadoEvento encerrar(Sefaz4jConfig config, String chaveAcesso, String nProt, String cUFEnc, String cMunEnc, String dtEnc) {
         exigirChaveAcessoValida(chaveAcesso);
-        if (nProt == null || !nProt.matches("[0-9]{15}")) {
-            throw new IllegalArgumentException("O campo 'nProt' deve ter exatamente 15 dígitos numéricos, obteve: '" + nProt + "'");
-        }
+        exigirNProtValido(nProt);
 
         String cUF = chaveAcesso.substring(0, 2);
         String cnpj = chaveAcesso.substring(6, 20);
@@ -342,6 +338,12 @@ public final class Sefaz4jMDFe {
             throw new IllegalArgumentException(
                 "O campo 'chaveAcesso' deve ter exatamente 44 dígitos numéricos, obteve: '" + chaveAcesso + "'"
             );
+        }
+    }
+
+    private static void exigirNProtValido(String nProt) {
+        if (nProt == null || !nProt.matches("[0-9]{15}")) {
+            throw new IllegalArgumentException("O campo 'nProt' deve ter exatamente 15 dígitos numéricos, obteve: '" + nProt + "'");
         }
     }
 

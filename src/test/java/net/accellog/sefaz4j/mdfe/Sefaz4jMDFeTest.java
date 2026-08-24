@@ -29,6 +29,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class Sefaz4jMDFeTest {
@@ -475,6 +476,19 @@ public class Sefaz4jMDFeTest {
 
         assertFalse(resultado.isOk());
         assertEquals("573", resultado.getCStat());
+        assertNull("evento rejeitado nao deve ter nProt", resultado.getNProt());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void cancelarRejeitaNProtComFormatoInvalido() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jMDFe.cancelar(
+            config,
+            "35250812345678000195580010000001231123456789",
+            "nao-e-um-numero",
+            "Justificativa de teste com quinze ou mais caracteres"
+        );
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -547,6 +561,20 @@ public class Sefaz4jMDFeTest {
         Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
 
         Sefaz4jMDFe.encerrar(config, "chave-invalida", "135250000000001", "35", "3550308", "2025-08-12");
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void encerrarRejeitaNProtComFormatoInvalido() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jMDFe.encerrar(
+            config,
+            "35250812345678000195580010000001231123456789",
+            "nao-e-um-numero",
+            "35",
+            "3550308",
+            "2025-08-12"
+        );
     }
 
     @Test
