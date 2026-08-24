@@ -129,6 +129,15 @@ public final class Sefaz4jNFSe {
         Document documento = EventoNFSeXmlBuilder.envolverEmEvento(chaveAcesso, tipoEvento, agora, pedRegEventoXml);
         // Só o infEvento externo é assinado — o ds:Signature do pedRegEvento é minOccurs="0" no
         // TCPedRegEvt e esta biblioteca não o gera.
+        // ATENÇÃO: qual documento o ADN realmente espera receber assinado NÃO está confirmado contra
+        // o Manual de Integração do SEFIN Nacional nem testado contra Homologação — é uma suposição
+        // de que o ADN quer o "evento" completo, assinado na sua assinatura externa/obrigatória
+        // (infEvento), espelhando a convenção de NFe/CTe de assinar o elemento de envelopamento mais
+        // externo. A alternativa não descartada é o ADN querer apenas o "pedRegEvento" isolado,
+        // assinado na sua assinatura interna/opcional (infPedReg — minOccurs="0" no schema). Se a
+        // Homologação real rejeitar esta escolha, a correção é isolada: o builder já separa
+        // montarPedRegEvento/envolverEmEvento, então basta assinar e transmitir o primeiro em vez do
+        // segundo.
         AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFSE_NAMESPACE, "infEvento", ALGORITMO_ASSINATURA, ALGORITMO_DIGEST);
 
         String xmlEventoAssinado = serializarDocumento(documento);
@@ -138,6 +147,8 @@ public final class Sefaz4jNFSe {
     }
 
     private static ResultadoEvento transmitirEvento(Sefaz4jConfig config, String chaveAcesso, String xmlEventoAssinado) {
+        // ATENÇÃO: caminho não confirmado contra o Manual de Integração do SEFIN Nacional nem testado
+        // contra Homologação.
         String url = (config.getUrlOverride() != null ? config.getUrlOverride() : baseUrlEmissao(config))
             + "/" + chaveAcesso + "/eventos";
 
