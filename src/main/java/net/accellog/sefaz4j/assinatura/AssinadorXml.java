@@ -1,7 +1,6 @@
 package net.accellog.sefaz4j.assinatura;
 
 import org.apache.xml.security.Init;
-import org.apache.xml.security.algorithms.MessageDigestAlgorithm;
 import org.apache.xml.security.c14n.Canonicalizer;
 import org.apache.xml.security.signature.XMLSignature;
 import org.apache.xml.security.transforms.Transforms;
