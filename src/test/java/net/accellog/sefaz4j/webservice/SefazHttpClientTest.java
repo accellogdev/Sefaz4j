@@ -68,6 +68,12 @@ public class SefazHttpClientTest {
             exchange.getResponseBody().write(resposta);
             exchange.close();
         });
+        servidor.createContext("/get-echo", exchange -> {
+            byte[] resposta = "<consultaResposta>ok</consultaResposta>".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
         servidor.start();
         porta = servidor.getAddress().getPort();
     }
@@ -110,6 +116,17 @@ public class SefazHttpClientTest {
             Duration.ofSeconds(5)
         );
         assertEquals("<retEnviNFe>ok</retEnviNFe>", resposta);
+    }
+
+    @Test
+    public void buscaEhRecebeResposta() {
+        String resposta = SefazHttpClient.buscar(
+            "https://localhost:" + porta + "/get-echo",
+            pfxBytes,
+            "teste123",
+            Duration.ofSeconds(5)
+        );
+        assertEquals("<consultaResposta>ok</consultaResposta>", resposta);
     }
 
     @Test(expected = ComunicacaoException.class)

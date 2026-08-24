@@ -35,6 +35,13 @@ import static org.junit.Assert.assertTrue;
 
 public class Sefaz4jNFSeTest {
 
+    // Sefaz4jNFSe.exigirChaveAcessoValida exige exatamente 50 caracteres alfanuméricos
+    // ([0-9A-Za-z]{50}) — um valor deliberadamente diferente do "chaveAcesso" de 42 caracteres
+    // usado nos corpos JSON de resposta simulados abaixo (esse último é apenas um campo opaco
+    // retornado pelo ADN, sem formato validado por esta biblioteca), por isso os testes de
+    // consultarSituacao usam esta constante só para o parâmetro de entrada (que vira o path da URL).
+    private static final String CHAVE_ACESSO_VALIDA_50_CHARS = "35202512345678000195000510000000000001234500000000";
+
     private HttpsServer servidor;
     private byte[] pfxBytes;
 
@@ -257,6 +264,65 @@ public class Sefaz4jNFSeTest {
 
         dps.setInfDPS(infDPS);
         return dps;
+    }
+
+    @Test
+    public void consultarSituacaoRetornaAutorizada() {
+        servidor.createContext("/consulta", exchange -> {
+            String xmlNFSe = "<NFSe xmlns=\"http://www.sped.fazenda.gov.br/nfse\"><infNFSe Id=\"NFS123\"><cStat>100</cStat></infNFSe></NFSe>";
+            String corpoJson = "{\"chaveAcesso\":\"352025123456780001950005100000000000012345\",\"nfseXmlGZipB64\":\""
+                + net.accellog.sefaz4j.nfse.webservice.PayloadCompactado.comprimirECodificar(xmlNFSe) + "\"}";
+            byte[] resposta = corpoJson.getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, pfxBytes, "teste123");
+        config.setUrlOverride("https://localhost:" + servidor.getAddress().getPort() + "/consulta");
+
+        ResultadoConsulta resultado = Sefaz4jNFSe.consultarSituacao(config, CHAVE_ACESSO_VALIDA_50_CHARS);
+
+        assertTrue(resultado.isOk());
+        assertEquals("100", resultado.getCStat());
+        assertEquals("352025123456780001950005100000000000012345", resultado.getChaveAcesso());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void consultarSituacaoRejeitaChaveAcessoInvalida() {
+        Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, pfxBytes, "teste123");
+
+        Sefaz4jNFSe.consultarSituacao(config, "chave-muito-curta");
+    }
+
+    /**
+     * Mesma cobertura que {@link #enviarXmlAssinadoRetornaOkParaTodosOsCStatDeSucesso()}, mas para
+     * {@code consultarSituacao} (GET) — prova que o mesmo conjunto CSTAT_SUCESSO (102/103/107, além
+     * de 100) também é reconhecido como ok=true nesta operação.
+     */
+    @Test
+    public void consultarSituacaoRetornaOkParaTodosOsCStatDeSucesso() {
+        for (String cStatDeSucesso : new String[] {"102", "103", "107"}) {
+            String caminho = "/consulta-cstat-" + cStatDeSucesso;
+            servidor.createContext(caminho, exchange -> {
+                String xmlNFSe = "<NFSe xmlns=\"http://www.sped.fazenda.gov.br/nfse\"><infNFSe Id=\"NFS123\"><cStat>"
+                    + cStatDeSucesso + "</cStat></infNFSe></NFSe>";
+                String corpoJson = "{\"chaveAcesso\":\"352025123456780001950005100000000000012345\",\"nfseXmlGZipB64\":\""
+                    + net.accellog.sefaz4j.nfse.webservice.PayloadCompactado.comprimirECodificar(xmlNFSe) + "\"}";
+                byte[] resposta = corpoJson.getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, resposta.length);
+                exchange.getResponseBody().write(resposta);
+                exchange.close();
+            });
+
+            Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, pfxBytes, "teste123");
+            config.setUrlOverride("https://localhost:" + servidor.getAddress().getPort() + caminho);
+
+            ResultadoConsulta resultado = Sefaz4jNFSe.consultarSituacao(config, CHAVE_ACESSO_VALIDA_50_CHARS);
+
+            assertTrue("cStat " + cStatDeSucesso + " deveria ser ok=true", resultado.isOk());
+            assertEquals(cStatDeSucesso, resultado.getCStat());
+        }
     }
 
     /**

@@ -62,6 +62,31 @@ public final class Sefaz4jNFSe {
         return enviarEProcessar(config, xmlAssinado);
     }
 
+    public static ResultadoConsulta consultarSituacao(Sefaz4jConfig config, String chaveAcesso) {
+        exigirChaveAcessoValida(chaveAcesso);
+
+        String url = (config.getUrlOverride() != null ? config.getUrlOverride() : baseUrlEmissao(config)) + "/" + chaveAcesso;
+
+        String respostaBruta = SefazHttpClient.buscar(url, config.getPfxBytes(), config.getSenhaPfx(), config.getTimeout());
+
+        RespostaNFSe resposta = RespostaNFSeParser.parsear(respostaBruta, "nfseXmlGZipB64");
+
+        if (!resposta.isSucesso()) {
+            return new ResultadoConsulta(false, resposta.getCodigoErro(), resposta.getMensagemErro(), null, null);
+        }
+
+        String cStat = extrairTextoDoElemento(resposta.getXmlDescomprimido(), "cStat");
+        return new ResultadoConsulta(CSTAT_SUCESSO.contains(cStat), cStat, null, resposta.getChaveAcesso(), resposta.getXmlDescomprimido());
+    }
+
+    private static void exigirChaveAcessoValida(String chaveAcesso) {
+        if (chaveAcesso == null || !chaveAcesso.matches("[0-9A-Za-z]{50}")) {
+            throw new IllegalArgumentException(
+                "O campo 'chaveAcesso' deve ter exatamente 50 caracteres alfanuméricos, obteve: '" + chaveAcesso + "'"
+            );
+        }
+    }
+
     private static Document montarDocumento(TCDPS dps) {
         try {
             return DpsXmlBuilder.marcarIdEMontarDocumento(dps);

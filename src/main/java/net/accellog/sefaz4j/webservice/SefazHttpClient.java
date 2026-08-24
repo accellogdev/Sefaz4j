@@ -73,6 +73,39 @@ public final class SefazHttpClient {
         }
     }
 
+    public static String buscar(String url, byte[] pfxBytes, String senha, Duration timeout) {
+        try {
+            String chaveCertificado = chaveCertificado(pfxBytes, senha);
+            SSLContext sslContext = SSL_CONTEXT_CACHE.computeIfAbsent(chaveCertificado, k -> {
+                try {
+                    return criarSslContext(pfxBytes, senha);
+                } catch (Exception e) {
+                    throw new ComunicacaoException("Falha ao preparar SSLContext para comunicação com a SEFAZ", e);
+                }
+            });
+            HttpClient httpClient = HTTP_CLIENT_CACHE.computeIfAbsent(
+                chaveCertificado + "|" + timeout.toMillis(),
+                k -> HttpClient.newBuilder().sslContext(sslContext).connectTimeout(timeout).build()
+            );
+
+            HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(timeout)
+                .GET()
+                .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() / 100 != 2) {
+                throw new ComunicacaoException("SEFAZ retornou HTTP " + response.statusCode() + ": " + response.body(), null);
+            }
+            return response.body();
+        } catch (ComunicacaoException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ComunicacaoException("Falha de comunicação com a SEFAZ em " + url, e);
+        }
+    }
+
     // Chave de cache derivada de um digest do PFX + senha, em vez das
     // próprias bytes/senha em claro, para não manter a senha do certificado
     // como chave de um Map de longa duração.
