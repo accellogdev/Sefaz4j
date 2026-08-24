@@ -265,6 +265,30 @@ public final class Sefaz4jMDFe {
         return enviarEProcessarEvento(config, xmlEventoAssinado);
     }
 
+    public static ResultadoEvento incluirCondutor(Sefaz4jConfig config, String chaveAcesso, String xNome, String cpf) {
+        exigirChaveAcessoValida(chaveAcesso);
+
+        String cUF = chaveAcesso.substring(0, 2);
+        String cnpj = chaveAcesso.substring(6, 20);
+
+        String evIncCondutorMDFeFragmento = "<evIncCondutorMDFe xmlns=\"" + MDFE_NAMESPACE + "\">" +
+            "<descEvento>Inclusao Condutor</descEvento>" +
+            "<condutor>" +
+            "<xNome>" + escaparTextoXml(xNome) + "</xNome>" +
+            "<CPF>" + cpf + "</CPF>" +
+            "</condutor>" +
+            "</evIncCondutorMDFe>";
+        ValidadorXsd.validar(evIncCondutorMDFeFragmento, "/schemas/mdfe/evIncCondutorMDFe_v3.00.xsd");
+
+        String detEvento = "<detEvento versaoEvento=\"" + MDFE_VERSAO + "\">" + evIncCondutorMDFeFragmento + "</detEvento>";
+
+        Document documento = EventoMDFeXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110114", 1, MDFE_VERSAO, detEvento);
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), MDFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
+        String xmlEventoAssinado = serializarDocumento(documento);
+
+        return enviarEProcessarEvento(config, xmlEventoAssinado);
+    }
+
     private static ResultadoEvento enviarEProcessarEvento(Sefaz4jConfig config, String xmlEventoAssinado) {
         ValidadorXsd.validar(xmlEventoAssinado, "/schemas/mdfe/eventoMDFe_v3.00.xsd");
 
