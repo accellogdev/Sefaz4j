@@ -291,22 +291,27 @@ export SEFAZ4J_TEST_PFX_SENHA=senha-do-certificado
 mvn test -Pintegration-tests
 ```
 
-## Estrutura de pacotes (NFe e CTe)
+## Estrutura de pacotes (NFe, CTe, NFSe e MDFe)
 
 Um consumidor de NFe precisa do pacote raiz `net.accellog.sefaz4j.nfe` (a fachada `Sefaz4jNFe` e os
 tipos de config/resultado); um consumidor de CTe, do `net.accellog.sefaz4j.cte` (fachada
-`Sefaz4jCTe`, com emissão e ciclo de vida pós-emissão). Os demais pacotes são implementação
-interna, e as peças de infraestrutura genéricas (`chave`, `assinatura`, `validacao`, `webservice`,
-`endpoints`) ficam na raiz e são compartilhadas pelos dois documentos:
+`Sefaz4jCTe`, com emissão e ciclo de vida pós-emissão); um consumidor de NFS-e, do
+`net.accellog.sefaz4j.nfse` (fachada `Sefaz4jNFSe`); um consumidor de MDFe, do
+`net.accellog.sefaz4j.mdfe` (fachada `Sefaz4jMDFe`). Os demais pacotes são implementação interna, e
+as peças de infraestrutura genéricas (`chave`, `assinatura`, `validacao`, `webservice`, `endpoints`)
+ficam na raiz e são compartilhadas pelos quatro documentos (NFS-e é a exceção parcial — reusa só o
+`Ambiente` de `endpoints`, sem `UF` nem arquivo `.ini`, e tem seu próprio pacote `nfse.chave`):
 
 - `chave` — cálculo da chave de acesso de 44 dígitos (mod-11)
-- `nfe.xml` / `cte.xml` — montagem do DOM a partir do `TNFe`/`TCTe`
+- `nfe.xml` / `cte.xml` / `mdfe.xml` — montagem do DOM a partir do `TNFe`/`TCTe`/`TMDFe`
 - `assinatura` — assinatura XML-DSig (Apache Santuario) e carregamento do certificado A1
-- `validacao` — validação contra a XSD oficial (`nfe_v4.00.xsd` ou `cte_v4.00.xsd`, conforme o documento)
+- `validacao` — validação contra a XSD oficial (`nfe_v4.00.xsd`, `cte_v4.00.xsd`, `DPS_v1.01.xsd` ou
+  `mdfe_v3.00.xsd`, conforme o documento)
 - `webservice` — cliente HTTP com TLS mútuo e parsing da resposta, compartilhados; a montagem do
-  envelope SOAP e o polling de `NFeRetAutorizacao4` (só NFe — o CTe é síncrono) ficam em
-  `nfe.webservice`/`cte.webservice`
-- `endpoints` — resolução de URL por UF/Ambiente/Serviço (`nfe-servicos.ini`/`cte-servicos.ini`)
+  envelope SOAP e o polling de lote (NFe e MDFe — o CTe é síncrono) ficam em
+  `nfe.webservice`/`cte.webservice`/`mdfe.webservice`
+- `endpoints` — resolução de URL por UF/Ambiente/Serviço (`nfe-servicos.ini`/`cte-servicos.ini`/
+  `mdfe-servicos.ini`)
 - `model` — classes **geradas** por JAXB a partir das XSDs (não editar à mão)
 
 ## Roadmap
@@ -317,4 +322,4 @@ interna, e as peças de infraestrutura genéricas (`chave`, `assinatura`, `valid
 - [x] CTe — ciclo de vida pós-emissão (consulta/cancelamento/CC-e — inutilização descontinuada pela SEFAZ)
 - [x] MDFe — emissão (3.00)
 - [x] MDFe — ciclo de vida pós-emissão (consulta/cancelamento/encerramento/inclusão de condutor — inutilização nunca existiu no padrão)
-- [ ] NFSe
+- [x] NFSe — emissão, consulta, cancelamento e cancelamento por substituição (Padrão Nacional)

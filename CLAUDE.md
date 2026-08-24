@@ -321,9 +321,9 @@ just for one version. There is no `Sefaz4jMDFe.inutilizar` and none is planned.
 - `net.accellog.sefaz4j.validacao` (shared) — `ValidadorXsd`: validates a serialized XML string against the bundled `nfe_v4.00.xsd`/
   `cte_v4.00.xsd`/`DPS_v1.01.xsd`/`evento_v1.01.xsd`/`pedRegEvento_v1.01.xsd`/`mdfe_v3.00.xsd`/
   `consSitMDFe_v3.00.xsd`/`evCancMDFe_v3.00.xsd`/`evEncMDFe_v3.00.xsd`/`evIncCondutorMDFe_v3.00.xsd`/
-  `eventoMDFe_v3.00.xsd` chains (root XSD path is a parameter); `ValidacaoXsdException`. Also carries
-  a static initializer raising `jdk.xml.maxOccurLimit` (see "Key technical facts" below) needed only
-  by the MDFe schema chain.
+  `eventoMDFe_v3.00.xsd` chains (root XSD path is a parameter); `ValidacaoXsdException`. `carregarSchema`
+  also relaxes `jdk.xml.maxOccurLimit` on the specific `SchemaFactory` instance it compiles with (see
+  "Key technical facts" below), needed only by the MDFe schema chain.
 - `net.accellog.sefaz4j.webservice` (shared) — `SefazHttpClient` (mutual-TLS `java.net.http.HttpClient`, with per-certificate
   `SSLContext`/`HttpClient` caching), `RespostaSefazParser`, `RespostaSefaz`, `ComunicacaoException`.
 - `net.accellog.sefaz4j.nfe.webservice` — `SoapEnvelopeBuilder`, `ReciboPoller` (polls `NFeRetAutorizacao4` while `cStat == 103`);
@@ -431,13 +431,17 @@ just for one version. There is no `Sefaz4jMDFe.inutilizar` and none is planned.
   validating an XML instance against it — this only governs how large a `maxOccurs` the schema
   document itself may declare). Without raising this, `SchemaFactory.newSchema(...)` throws on the
   very first MDF-e validation call in any downstream JVM that hasn't separately raised the limit via
-  a launch flag — which a library consumer has no reason to know it needs to do. Two things fix this
-  for the two places that compile this schema: `.mvn/jvm.config` sets `-Djdk.xml.maxOccurLimit=0` for
-  Maven's own JVM (covering `generate-sources`/JAXB codegen and `mvn test`), and `ValidadorXsd` itself
-  carries a static initializer that sets the same system property at runtime
-  (`System.setProperty("jdk.xml.maxOccurLimit", "0")`, only if not already set, so an explicit
-  caller-provided `-D` value is never silently overridden) — making `ValidadorXsd` self-contained
-  regardless of the consuming application's own JVM flags.
+  a launch flag — which a library consumer has no reason to know it needs to do. `.mvn/jvm.config`
+  sets `-Djdk.xml.maxOccurLimit=0` for Maven's own JVM, covering `generate-sources`/JAXB codegen only
+  — it does **not** reach `mvn test`, since `maven-surefire-plugin` forks a separate JVM for tests and
+  `pom.xml` sets no `argLine` there. The runtime/test case is instead handled entirely by
+  `ValidadorXsd` itself: `carregarSchema` calls `factory.setProperty("jdk.xml.maxOccurLimit", "0")` on
+  the specific `SchemaFactory` instance right before compiling a schema, scoped to that instance only
+  (never JVM-wide), wrapped in a try/catch for `SAXNotRecognizedException`/`SAXNotSupportedException`
+  in case a provider doesn't support the property. This makes `ValidadorXsd` self-contained regardless
+  of the consuming application's own JVM flags, without ever mutating a global system property or
+  silently disabling the guard for NFe/CTe/NFS-e schema compilation or any unrelated XML processing
+  the host application does.
 
 ## Release / CI
 

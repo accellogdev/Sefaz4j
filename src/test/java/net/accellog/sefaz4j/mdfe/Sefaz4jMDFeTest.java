@@ -341,12 +341,6 @@ public class Sefaz4jMDFeTest {
         }
     }
 
-    /**
-     * Assinatura estruturalmente bem-formada mas criptograficamente falsa de propósito, mesmo
-     * padrão de {@code Sefaz4jCTeTest.xmlCteAssinadoValido()}: {@code ds:Signature} é obrigatório
-     * em {@code TMDFe} (sem minOccurs="0"), então o XSD exige o elemento, mas
-     * {@code enviarXmlAssinado} só valida contra o XSD e transmite — não verifica a assinatura.
-     */
     @Test
     public void consultarSituacaoRetornaAutorizada() {
         servidor.createContext("/consulta", exchange -> {
@@ -664,6 +658,12 @@ public class Sefaz4jMDFeTest {
         Sefaz4jMDFe.incluirCondutor(config, "chave-invalida", "Jose da Silva", "12345678909");
     }
 
+    /**
+     * Assinatura estruturalmente bem-formada mas criptograficamente falsa de propósito, mesmo
+     * padrão de {@code Sefaz4jCTeTest.xmlCteAssinadoValido()}: {@code ds:Signature} é obrigatório
+     * em {@code TMDFe} (sem minOccurs="0"), então o XSD exige o elemento, mas
+     * {@code enviarXmlAssinado} só valida contra o XSD e transmite — não verifica a assinatura.
+     */
     private static String xmlMdfeAssinadoValido() {
         return "<MDFe xmlns=\"http://www.portalfiscal.inf.br/mdfe\">" +
             "<infMDFe Id=\"MDFe35250812345678000195580010000001231123456789\" versao=\"3.00\">" +
