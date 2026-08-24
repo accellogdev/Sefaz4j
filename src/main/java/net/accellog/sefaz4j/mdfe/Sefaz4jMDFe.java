@@ -37,18 +37,31 @@ import java.nio.charset.StandardCharsets;
  */
 public final class Sefaz4jMDFe {
 
-    static final String MDFE_NAMESPACE = "http://www.portalfiscal.inf.br/mdfe";
-    static final String MDFE_XSD_RAIZ = "/schemas/mdfe/mdfe_v3.00.xsd";
-    static final String MDFE_SERVICOS_INI = "/endpoints/mdfe-servicos.ini";
-    static final String PREFIXO_SECAO_MDFE = "MDFE_";
-    static final String MDFE_VERSAO = "3.00";
+    private static final String MDFE_NAMESPACE = "http://www.portalfiscal.inf.br/mdfe";
+    private static final String MDFE_XSD_RAIZ = "/schemas/mdfe/mdfe_v3.00.xsd";
+    private static final String MDFE_SERVICOS_INI = "/endpoints/mdfe-servicos.ini";
+    private static final String PREFIXO_SECAO_MDFE = "MDFE_";
+    private static final String MDFE_VERSAO = "3.00";
     private static final int TAMANHO_MINIMO_JUSTIFICATIVA = 15;
     private static final int TAMANHO_MAXIMO_JUSTIFICATIVA = 255;
+
+    private static final String CONS_SIT_MDFE_XSD = "/schemas/mdfe/consSitMDFe_v3.00.xsd";
+    private static final String EVENTO_MDFE_XSD = "/schemas/mdfe/eventoMDFe_v3.00.xsd";
+    private static final String EV_CANC_MDFE_XSD = "/schemas/mdfe/evCancMDFe_v3.00.xsd";
+    private static final String EV_ENC_MDFE_XSD = "/schemas/mdfe/evEncMDFe_v3.00.xsd";
+    private static final String EV_INC_CONDUTOR_MDFE_XSD = "/schemas/mdfe/evIncCondutorMDFe_v3.00.xsd";
+    private static final String CONTENT_TYPE_RECEPCAO = "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeRecepcao/mdfeRecepcaoLote\"";
+    private static final String CONTENT_TYPE_CONSULTA = "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeConsulta/mdfeConsultaMDF\"";
+    private static final String CONTENT_TYPE_RECEPCAO_EVENTO = "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeRecepcaoEvento/mdfeRecepcaoEvento\"";
 
     private Sefaz4jMDFe() {
     }
 
     public static ResultadoEmissao emitir(Sefaz4jConfig config, TMDFe mdfe) {
+        // Mesma proteção de Sefaz4jCTe.emitir/Sefaz4jNFe.emitir: emitir um documento cujo
+        // ide/tpAmb diverge do Ambiente configurado é um erro de uso grave (um MDF-e de
+        // homologação enviado ao endpoint de produção, ou o inverso), então falha cedo — antes
+        // de montar, assinar ou transmitir qualquer coisa.
         verificarTpAmbCompativel(config, mdfe);
 
         Document documento = montarDocumento(mdfe);
@@ -62,6 +75,119 @@ public final class Sefaz4jMDFe {
 
     public static ResultadoEmissao enviarXmlAssinado(Sefaz4jConfig config, String xmlAssinado) {
         return enviarEProcessar(config, xmlAssinado);
+    }
+
+    public static ResultadoConsulta consultarSituacao(Sefaz4jConfig config, String chaveAcesso) {
+        exigirChaveAcessoValida(chaveAcesso);
+
+        String xmlConsulta = "<consSitMDFe xmlns=\"" + MDFE_NAMESPACE + "\" versao=\"" + MDFE_VERSAO + "\">" +
+            "<tpAmb>" + config.getAmbiente().getTpAmb() + "</tpAmb>" +
+            "<xServ>CONSULTAR</xServ>" +
+            "<chMDFe>" + chaveAcesso + "</chMDFe>" +
+            "</consSitMDFe>";
+
+        ValidadorXsd.validar(xmlConsulta, CONS_SIT_MDFE_XSD);
+
+        String url = config.getUrlConsultaProtocoloOverride() != null
+            ? config.getUrlConsultaProtocoloOverride()
+            : EndpointResolver.resolver(MDFE_SERVICOS_INI, PREFIXO_SECAO_MDFE, config.getUf(), config.getAmbiente(), Servico.MDFE_CONSULTA_PROTOCOLO.getChaveIni());
+
+        String envelope = SoapEnvelopeBuilder.envelopeConsultaSituacao(xmlConsulta);
+        String respostaBruta = SefazHttpClient.postar(
+            url,
+            CONTENT_TYPE_CONSULTA,
+            envelope,
+            config.getPfxBytes(),
+            config.getSenhaPfx(),
+            config.getTimeout()
+        );
+
+        RespostaSefaz resposta = RespostaSefazParser.parsear(respostaBruta, "protMDFe", "chMDFe");
+
+        return new ResultadoConsulta(
+            "100".equals(resposta.getCStat()),
+            resposta.getCStat(),
+            resposta.getXMotivo(),
+            resposta.getChaveDocumento(),
+            resposta.getProtocoloXml()
+        );
+    }
+
+    public static ResultadoEvento cancelar(Sefaz4jConfig config, String chaveAcesso, String nProt, String justificativa) {
+        exigirChaveAcessoValida(chaveAcesso);
+        exigirTamanho(justificativa, TAMANHO_MINIMO_JUSTIFICATIVA, TAMANHO_MAXIMO_JUSTIFICATIVA, "justificativa do cancelamento");
+        exigirNProtValido(nProt);
+
+        String cUF = chaveAcesso.substring(0, 2);
+        String cnpj = chaveAcesso.substring(6, 20);
+
+        String evCancMDFeFragmento = "<evCancMDFe xmlns=\"" + MDFE_NAMESPACE + "\">" +
+            "<descEvento>Cancelamento</descEvento>" +
+            "<nProt>" + nProt + "</nProt>" +
+            "<xJust>" + escaparTextoXml(justificativa) + "</xJust>" +
+            "</evCancMDFe>";
+        ValidadorXsd.validar(evCancMDFeFragmento, EV_CANC_MDFE_XSD);
+
+        String detEvento = "<detEvento versaoEvento=\"" + MDFE_VERSAO + "\">" + evCancMDFeFragmento + "</detEvento>";
+
+        Document documento = EventoMDFeXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110111", 1, MDFE_VERSAO, detEvento);
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), MDFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
+        String xmlEventoAssinado = serializarDocumento(documento);
+
+        return enviarEProcessarEvento(config, xmlEventoAssinado);
+    }
+
+    public static ResultadoEvento encerrar(Sefaz4jConfig config, String chaveAcesso, String nProt, String cUFEnc, String cMunEnc, String dtEnc) {
+        exigirChaveAcessoValida(chaveAcesso);
+        exigirNProtValido(nProt);
+
+        String cUF = chaveAcesso.substring(0, 2);
+        String cnpj = chaveAcesso.substring(6, 20);
+
+        String evEncMDFeFragmento = "<evEncMDFe xmlns=\"" + MDFE_NAMESPACE + "\">" +
+            "<descEvento>Encerramento</descEvento>" +
+            "<nProt>" + nProt + "</nProt>" +
+            "<dtEnc>" + dtEnc + "</dtEnc>" +
+            "<cUF>" + cUFEnc + "</cUF>" +
+            "<cMun>" + cMunEnc + "</cMun>" +
+            "</evEncMDFe>";
+        ValidadorXsd.validar(evEncMDFeFragmento, EV_ENC_MDFE_XSD);
+
+        String detEvento = "<detEvento versaoEvento=\"" + MDFE_VERSAO + "\">" + evEncMDFeFragmento + "</detEvento>";
+
+        Document documento = EventoMDFeXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110112", 1, MDFE_VERSAO, detEvento);
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), MDFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
+        String xmlEventoAssinado = serializarDocumento(documento);
+
+        return enviarEProcessarEvento(config, xmlEventoAssinado);
+    }
+
+    public static ResultadoEvento incluirCondutor(Sefaz4jConfig config, String chaveAcesso, String xNome, String cpf) {
+        return incluirCondutor(config, chaveAcesso, xNome, cpf, 1);
+    }
+
+    public static ResultadoEvento incluirCondutor(Sefaz4jConfig config, String chaveAcesso, String xNome, String cpf, int nSeqEvento) {
+        exigirChaveAcessoValida(chaveAcesso);
+
+        String cUF = chaveAcesso.substring(0, 2);
+        String cnpj = chaveAcesso.substring(6, 20);
+
+        String evIncCondutorMDFeFragmento = "<evIncCondutorMDFe xmlns=\"" + MDFE_NAMESPACE + "\">" +
+            "<descEvento>Inclusao Condutor</descEvento>" +
+            "<condutor>" +
+            "<xNome>" + escaparTextoXml(xNome) + "</xNome>" +
+            "<CPF>" + cpf + "</CPF>" +
+            "</condutor>" +
+            "</evIncCondutorMDFe>";
+        ValidadorXsd.validar(evIncCondutorMDFeFragmento, EV_INC_CONDUTOR_MDFE_XSD);
+
+        String detEvento = "<detEvento versaoEvento=\"" + MDFE_VERSAO + "\">" + evIncCondutorMDFeFragmento + "</detEvento>";
+
+        Document documento = EventoMDFeXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110114", nSeqEvento, MDFE_VERSAO, detEvento);
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), MDFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
+        String xmlEventoAssinado = serializarDocumento(documento);
+
+        return enviarEProcessarEvento(config, xmlEventoAssinado);
     }
 
     private static void verificarTpAmbCompativel(Sefaz4jConfig config, TMDFe mdfe) {
@@ -91,7 +217,7 @@ public final class Sefaz4jMDFe {
         }
     }
 
-    static String serializarDocumento(Document documento) {
+    private static String serializarDocumento(Document documento) {
         try {
             return serializar(documento);
         } catch (RuntimeException e) {
@@ -111,7 +237,7 @@ public final class Sefaz4jMDFe {
         String envelope = SoapEnvelopeBuilder.envelopeRecepcao(xmlAssinado, 1L);
         String respostaBruta = SefazHttpClient.postar(
             urlRecepcao,
-            "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeRecepcao/mdfeRecepcaoLote\"",
+            CONTENT_TYPE_RECEPCAO,
             envelope,
             config.getPfxBytes(),
             config.getSenhaPfx(),
@@ -144,6 +270,11 @@ public final class Sefaz4jMDFe {
             }
         }
 
+        // Mesmo padrão de fallback já usado por Sefaz4jNFe.enviarEProcessar/Sefaz4jCTe.enviarEProcessar:
+        // quando há protocolo (protMDFe/infProt), o cStat/xMotivo que importa é o do MDF-e individual
+        // dentro dele — o cStat de nível de lote (104, "lote processado") só confirma que o lote
+        // terminou de processar, não o resultado do documento; sem protocolo (rejeição sem chegar a
+        // ser protocolada), usamos o cStat/xMotivo de nível superior do próprio retEnviMDFe.
         String protocoloXml = resposta.getProtocoloXml();
         String cStatFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "cStat") : resposta.getCStat();
         String xMotivoFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "xMotivo") : resposta.getXMotivo();
@@ -156,7 +287,39 @@ public final class Sefaz4jMDFe {
         return new ResultadoEmissao(autorizado, cStatFinal, xMotivoFinal, resposta.getChaveDocumento(), xmlFinal);
     }
 
-    static String extrairTextoDoElemento(String xmlFragmento, String nomeLocalElemento) {
+    private static ResultadoEvento enviarEProcessarEvento(Sefaz4jConfig config, String xmlEventoAssinado) {
+        ValidadorXsd.validar(xmlEventoAssinado, EVENTO_MDFE_XSD);
+
+        String url = config.getUrlRecepcaoEventoOverride() != null
+            ? config.getUrlRecepcaoEventoOverride()
+            : EndpointResolver.resolver(MDFE_SERVICOS_INI, PREFIXO_SECAO_MDFE, config.getUf(), config.getAmbiente(), Servico.RECEPCAO_EVENTO.getChaveIni());
+
+        String envelope = SoapEnvelopeBuilder.envelopeRecepcaoEvento(xmlEventoAssinado);
+        String respostaBruta = SefazHttpClient.postar(
+            url,
+            CONTENT_TYPE_RECEPCAO_EVENTO,
+            envelope,
+            config.getPfxBytes(),
+            config.getSenhaPfx(),
+            config.getTimeout()
+        );
+
+        RespostaSefaz resposta = RespostaSefazParser.parsear(respostaBruta, "retEventoMDFe");
+
+        // Mesmo padrão de fallback já usado por Sefaz4jCTe.enviarEProcessarEvento: protocoloXml
+        // (quando presente) É o retEventoMDFe/infEvento completo — MDFe não tem um nível de lote
+        // separado para eventos, igual ao CTe. Sem protocolo (rejeição antes de qualquer infEvento
+        // existir), caímos no cStat/xMotivo de nível superior do próprio retEventoMDFe como único
+        // fallback disponível.
+        String protocoloXml = resposta.getProtocoloXml();
+        String cStatFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "cStat") : resposta.getCStat();
+        String xMotivoFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "xMotivo") : resposta.getXMotivo();
+        String nProtFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "nProt") : null;
+
+        return new ResultadoEvento("135".equals(cStatFinal), cStatFinal, xMotivoFinal, nProtFinal, protocoloXml);
+    }
+
+    private static String extrairTextoDoElemento(String xmlFragmento, String nomeLocalElemento) {
         try {
             Document documento = criarDocumentBuilderSeguro().parse(
                 new ByteArrayInputStream(xmlFragmento.getBytes(StandardCharsets.UTF_8))
@@ -168,7 +331,7 @@ public final class Sefaz4jMDFe {
         }
     }
 
-    static javax.xml.parsers.DocumentBuilder criarDocumentBuilderSeguro() throws Exception {
+    private static javax.xml.parsers.DocumentBuilder criarDocumentBuilderSeguro() throws Exception {
         DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
         dbf.setNamespaceAware(true);
         dbf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
@@ -176,144 +339,12 @@ public final class Sefaz4jMDFe {
         return dbf.newDocumentBuilder();
     }
 
-    public static ResultadoConsulta consultarSituacao(Sefaz4jConfig config, String chaveAcesso) {
-        exigirChaveAcessoValida(chaveAcesso);
-
-        String xmlConsulta = "<consSitMDFe xmlns=\"" + MDFE_NAMESPACE + "\" versao=\"" + MDFE_VERSAO + "\">" +
-            "<tpAmb>" + config.getAmbiente().getTpAmb() + "</tpAmb>" +
-            "<xServ>CONSULTAR</xServ>" +
-            "<chMDFe>" + chaveAcesso + "</chMDFe>" +
-            "</consSitMDFe>";
-
-        ValidadorXsd.validar(xmlConsulta, "/schemas/mdfe/consSitMDFe_v3.00.xsd");
-
-        String url = config.getUrlConsultaProtocoloOverride() != null
-            ? config.getUrlConsultaProtocoloOverride()
-            : EndpointResolver.resolver(MDFE_SERVICOS_INI, PREFIXO_SECAO_MDFE, config.getUf(), config.getAmbiente(), Servico.MDFE_CONSULTA_PROTOCOLO.getChaveIni());
-
-        String envelope = SoapEnvelopeBuilder.envelopeConsultaSituacao(xmlConsulta);
-        String respostaBruta = SefazHttpClient.postar(
-            url,
-            "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeConsulta/mdfeConsultaMDF\"",
-            envelope,
-            config.getPfxBytes(),
-            config.getSenhaPfx(),
-            config.getTimeout()
-        );
-
-        RespostaSefaz resposta = RespostaSefazParser.parsear(respostaBruta, "protMDFe", "chMDFe");
-
-        return new ResultadoConsulta(
-            "100".equals(resposta.getCStat()),
-            resposta.getCStat(),
-            resposta.getXMotivo(),
-            resposta.getChaveDocumento(),
-            resposta.getProtocoloXml()
-        );
-    }
-
-    public static ResultadoEvento cancelar(Sefaz4jConfig config, String chaveAcesso, String nProt, String justificativa) {
-        exigirChaveAcessoValida(chaveAcesso);
-        exigirTamanho(justificativa, TAMANHO_MINIMO_JUSTIFICATIVA, TAMANHO_MAXIMO_JUSTIFICATIVA, "justificativa do cancelamento");
-        exigirNProtValido(nProt);
-
-        String cUF = chaveAcesso.substring(0, 2);
-        String cnpj = chaveAcesso.substring(6, 20);
-
-        String evCancMDFeFragmento = "<evCancMDFe xmlns=\"" + MDFE_NAMESPACE + "\">" +
-            "<descEvento>Cancelamento</descEvento>" +
-            "<nProt>" + nProt + "</nProt>" +
-            "<xJust>" + escaparTextoXml(justificativa) + "</xJust>" +
-            "</evCancMDFe>";
-        ValidadorXsd.validar(evCancMDFeFragmento, "/schemas/mdfe/evCancMDFe_v3.00.xsd");
-
-        String detEvento = "<detEvento versaoEvento=\"" + MDFE_VERSAO + "\">" + evCancMDFeFragmento + "</detEvento>";
-
-        Document documento = EventoMDFeXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110111", 1, MDFE_VERSAO, detEvento);
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), MDFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
-        String xmlEventoAssinado = serializarDocumento(documento);
-
-        return enviarEProcessarEvento(config, xmlEventoAssinado);
-    }
-
-    public static ResultadoEvento encerrar(Sefaz4jConfig config, String chaveAcesso, String nProt, String cUFEnc, String cMunEnc, String dtEnc) {
-        exigirChaveAcessoValida(chaveAcesso);
-        exigirNProtValido(nProt);
-
-        String cUF = chaveAcesso.substring(0, 2);
-        String cnpj = chaveAcesso.substring(6, 20);
-
-        String evEncMDFeFragmento = "<evEncMDFe xmlns=\"" + MDFE_NAMESPACE + "\">" +
-            "<descEvento>Encerramento</descEvento>" +
-            "<nProt>" + nProt + "</nProt>" +
-            "<dtEnc>" + dtEnc + "</dtEnc>" +
-            "<cUF>" + cUFEnc + "</cUF>" +
-            "<cMun>" + cMunEnc + "</cMun>" +
-            "</evEncMDFe>";
-        ValidadorXsd.validar(evEncMDFeFragmento, "/schemas/mdfe/evEncMDFe_v3.00.xsd");
-
-        String detEvento = "<detEvento versaoEvento=\"" + MDFE_VERSAO + "\">" + evEncMDFeFragmento + "</detEvento>";
-
-        Document documento = EventoMDFeXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110112", 1, MDFE_VERSAO, detEvento);
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), MDFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
-        String xmlEventoAssinado = serializarDocumento(documento);
-
-        return enviarEProcessarEvento(config, xmlEventoAssinado);
-    }
-
-    public static ResultadoEvento incluirCondutor(Sefaz4jConfig config, String chaveAcesso, String xNome, String cpf) {
-        return incluirCondutor(config, chaveAcesso, xNome, cpf, 1);
-    }
-
-    public static ResultadoEvento incluirCondutor(Sefaz4jConfig config, String chaveAcesso, String xNome, String cpf, int nSeqEvento) {
-        exigirChaveAcessoValida(chaveAcesso);
-
-        String cUF = chaveAcesso.substring(0, 2);
-        String cnpj = chaveAcesso.substring(6, 20);
-
-        String evIncCondutorMDFeFragmento = "<evIncCondutorMDFe xmlns=\"" + MDFE_NAMESPACE + "\">" +
-            "<descEvento>Inclusao Condutor</descEvento>" +
-            "<condutor>" +
-            "<xNome>" + escaparTextoXml(xNome) + "</xNome>" +
-            "<CPF>" + cpf + "</CPF>" +
-            "</condutor>" +
-            "</evIncCondutorMDFe>";
-        ValidadorXsd.validar(evIncCondutorMDFeFragmento, "/schemas/mdfe/evIncCondutorMDFe_v3.00.xsd");
-
-        String detEvento = "<detEvento versaoEvento=\"" + MDFE_VERSAO + "\">" + evIncCondutorMDFeFragmento + "</detEvento>";
-
-        Document documento = EventoMDFeXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110114", nSeqEvento, MDFE_VERSAO, detEvento);
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), MDFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
-        String xmlEventoAssinado = serializarDocumento(documento);
-
-        return enviarEProcessarEvento(config, xmlEventoAssinado);
-    }
-
-    private static ResultadoEvento enviarEProcessarEvento(Sefaz4jConfig config, String xmlEventoAssinado) {
-        ValidadorXsd.validar(xmlEventoAssinado, "/schemas/mdfe/eventoMDFe_v3.00.xsd");
-
-        String url = config.getUrlRecepcaoEventoOverride() != null
-            ? config.getUrlRecepcaoEventoOverride()
-            : EndpointResolver.resolver(MDFE_SERVICOS_INI, PREFIXO_SECAO_MDFE, config.getUf(), config.getAmbiente(), Servico.RECEPCAO_EVENTO.getChaveIni());
-
-        String envelope = SoapEnvelopeBuilder.envelopeRecepcaoEvento(xmlEventoAssinado);
-        String respostaBruta = SefazHttpClient.postar(
-            url,
-            "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeRecepcaoEvento/mdfeRecepcaoEvento\"",
-            envelope,
-            config.getPfxBytes(),
-            config.getSenhaPfx(),
-            config.getTimeout()
-        );
-
-        RespostaSefaz resposta = RespostaSefazParser.parsear(respostaBruta, "retEventoMDFe");
-
-        String protocoloXml = resposta.getProtocoloXml();
-        String cStatFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "cStat") : resposta.getCStat();
-        String xMotivoFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "xMotivo") : resposta.getXMotivo();
-        String nProtFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "nProt") : null;
-
-        return new ResultadoEvento("135".equals(cStatFinal), cStatFinal, xMotivoFinal, nProtFinal, protocoloXml);
+    private static String serializar(Document documento) throws Exception {
+        Transformer transformer = TransformerFactory.newInstance().newTransformer();
+        transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes");
+        StringWriter writer = new StringWriter();
+        transformer.transform(new DOMSource(documento), new StreamResult(writer));
+        return writer.toString();
     }
 
     private static void exigirTamanho(String texto, int tamanhoMinimo, int tamanhoMaximo, String nomeCampo) {
@@ -322,15 +353,6 @@ public final class Sefaz4jMDFe {
                 "O campo '" + nomeCampo + "' deve ter entre " + tamanhoMinimo + " e " + tamanhoMaximo + " caracteres"
             );
         }
-    }
-
-    private static String escaparTextoXml(String texto) {
-        return texto
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace("\"", "&quot;")
-            .replace("'", "&apos;");
     }
 
     private static void exigirChaveAcessoValida(String chaveAcesso) {
@@ -347,11 +369,12 @@ public final class Sefaz4jMDFe {
         }
     }
 
-    private static String serializar(Document documento) throws Exception {
-        Transformer transformer = TransformerFactory.newInstance().newTransformer();
-        transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes");
-        StringWriter writer = new StringWriter();
-        transformer.transform(new DOMSource(documento), new StreamResult(writer));
-        return writer.toString();
+    private static String escaparTextoXml(String texto) {
+        return texto
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&apos;");
     }
 }
