@@ -501,6 +501,54 @@ public class Sefaz4jMDFeTest {
         );
     }
 
+    @Test
+    public void encerrarRetornaEventoRegistrado() {
+        AtomicReference<String> corpoCapturado = new AtomicReference<>();
+        servidor.createContext("/evento-encerramento", exchange -> {
+            String corpoRecebido = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            corpoCapturado.set(corpoRecebido);
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><mdfeResultMsg xmlns=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeRecepcaoEvento\">" +
+                "<retEventoMDFe xmlns=\"http://www.portalfiscal.inf.br/mdfe\" versao=\"3.00\"><infEvento>" +
+                "<tpAmb>2</tpAmb><verAplic>RS_1.0.0</verAplic><cOrgao>35</cOrgao>" +
+                "<cStat>135</cStat><xMotivo>Evento registrado e vinculado ao MDF-e</xMotivo>" +
+                "<chMDFe>35250812345678000195580010000001231123456789</chMDFe>" +
+                "<tpEvento>110112</tpEvento><xEvento>Encerramento</xEvento><nSeqEvento>1</nSeqEvento>" +
+                "<dhRegEvento>2025-08-12T10:14:00-03:00</dhRegEvento>" +
+                "<nProt>135250000000006</nProt>" +
+                "</infEvento></retEventoMDFe>" +
+                "</mdfeResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+        config.setUrlRecepcaoEventoOverride("https://localhost:" + servidor.getAddress().getPort() + "/evento-encerramento");
+
+        ResultadoEvento resultado = Sefaz4jMDFe.encerrar(
+            config,
+            "35250812345678000195580010000001231123456789",
+            "135250000000001",
+            "35",
+            "3550308",
+            "2025-08-12"
+        );
+
+        assertTrue(resultado.isOk());
+        assertEquals("135", resultado.getCStat());
+        assertEquals("135250000000006", resultado.getNProt());
+        assertTrue(corpoCapturado.get().contains("<tpEvento>110112</tpEvento>"));
+        assertTrue(corpoCapturado.get().contains("<dtEnc>2025-08-12</dtEnc>"));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void encerrarRejeitaChaveAcessoInvalida() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jMDFe.encerrar(config, "chave-invalida", "135250000000001", "35", "3550308", "2025-08-12");
+    }
+
     private static String xmlMdfeAssinadoValido() {
         return "<MDFe xmlns=\"http://www.portalfiscal.inf.br/mdfe\">" +
             "<infMDFe Id=\"MDFe35250812345678000195580010000001231123456789\" versao=\"3.00\">" +

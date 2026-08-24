@@ -238,6 +238,33 @@ public final class Sefaz4jMDFe {
         return enviarEProcessarEvento(config, xmlEventoAssinado);
     }
 
+    public static ResultadoEvento encerrar(Sefaz4jConfig config, String chaveAcesso, String nProt, String cUFEnc, String cMunEnc, String dtEnc) {
+        exigirChaveAcessoValida(chaveAcesso);
+        if (nProt == null || !nProt.matches("[0-9]{15}")) {
+            throw new IllegalArgumentException("O campo 'nProt' deve ter exatamente 15 dígitos numéricos, obteve: '" + nProt + "'");
+        }
+
+        String cUF = chaveAcesso.substring(0, 2);
+        String cnpj = chaveAcesso.substring(6, 20);
+
+        String evEncMDFeFragmento = "<evEncMDFe xmlns=\"" + MDFE_NAMESPACE + "\">" +
+            "<descEvento>Encerramento</descEvento>" +
+            "<nProt>" + nProt + "</nProt>" +
+            "<dtEnc>" + dtEnc + "</dtEnc>" +
+            "<cUF>" + cUFEnc + "</cUF>" +
+            "<cMun>" + cMunEnc + "</cMun>" +
+            "</evEncMDFe>";
+        ValidadorXsd.validar(evEncMDFeFragmento, "/schemas/mdfe/evEncMDFe_v3.00.xsd");
+
+        String detEvento = "<detEvento versaoEvento=\"" + MDFE_VERSAO + "\">" + evEncMDFeFragmento + "</detEvento>";
+
+        Document documento = EventoMDFeXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110112", 1, MDFE_VERSAO, detEvento);
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), MDFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
+        String xmlEventoAssinado = serializarDocumento(documento);
+
+        return enviarEProcessarEvento(config, xmlEventoAssinado);
+    }
+
     private static ResultadoEvento enviarEProcessarEvento(Sefaz4jConfig config, String xmlEventoAssinado) {
         ValidadorXsd.validar(xmlEventoAssinado, "/schemas/mdfe/eventoMDFe_v3.00.xsd");
 
