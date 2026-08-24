@@ -6,6 +6,7 @@ import net.accellog.sefaz4j.nfse.webservice.PayloadCompactado;
 import net.accellog.sefaz4j.nfse.webservice.RespostaNFSe;
 import net.accellog.sefaz4j.nfse.webservice.RespostaNFSeParser;
 import net.accellog.sefaz4j.nfse.xml.DpsXmlBuilder;
+import net.accellog.sefaz4j.nfse.xml.EventoNFSeXmlBuilder;
 import net.accellog.sefaz4j.validacao.ValidadorXsd;
 import net.accellog.sefaz4j.webservice.SefazHttpClient;
 import org.apache.xml.security.algorithms.MessageDigestAlgorithm;
@@ -31,6 +32,17 @@ public final class Sefaz4jNFSe {
 
     private static final String NFSE_NAMESPACE = "http://www.sped.fazenda.gov.br/nfse";
     private static final String DPS_XSD_RAIZ = "/schemas/nfse/DPS_v1.01.xsd";
+    private static final String PED_REG_EVENTO_XSD_RAIZ = "/schemas/nfse/pedRegEvento_v1.01.xsd";
+    private static final String EVENTO_XSD_RAIZ = "/schemas/nfse/evento_v1.01.xsd";
+    // ATENÇÃO: nome do campo JSON NÃO confirmado contra o Manual de Integração do SEFIN Nacional nem
+    // testado contra Homologação — é uma inferência da convenção de nomes já observada em
+    // "dpsXmlGZipB64"/"nfseXmlGZipB64". Mesma ressalva de ALGORITMO_ASSINATURA/ALGORITMO_DIGEST
+    // abaixo: se a Homologação real rejeitar, troque só esta constante. Vale para a requisição e
+    // para o campo lido na resposta.
+    private static final String CAMPO_JSON_EVENTO = "eventoXmlGZipB64";
+    // TSMotivo (tiposSimples_v1.01.xsd): minLength=15, maxLength=255.
+    private static final int TAMANHO_MINIMO_X_MOTIVO = 15;
+    private static final int TAMANHO_MAXIMO_X_MOTIVO = 255;
     // ATENÇÃO: algoritmo NÃO confirmado contra o Manual de Integração do SEFIN Nacional nem
     // testado empiricamente contra Homologação. RSA-SHA256/SHA-256 é o palpite mais provável
     // (padrão federal mais recente), não um fato verificado. Se a Homologação real rejeitar a
@@ -77,6 +89,99 @@ public final class Sefaz4jNFSe {
 
         String cStat = extrairTextoDoElemento(resposta.getXmlDescomprimido(), "cStat");
         return new ResultadoConsulta(CSTAT_SUCESSO.contains(cStat), cStat, null, resposta.getChaveAcesso(), resposta.getXmlDescomprimido());
+    }
+
+    /**
+     * Cancela uma NFS-e já emitida enviando o evento {@code e101101} ao ADN/SEFIN Nacional.
+     *
+     * <p>Ao contrário de NFe/CTe, o CNPJ do autor do evento é um parâmetro explícito: a chave da
+     * NFS-e não tem, nesta biblioteca, um leiaute interno confirmado do qual extraí-lo com segurança
+     * por posição fixa (NFe/CTe usam {@code chaveAcesso.substring(6, 20)}).</p>
+     *
+     * @param cMotivo {@code TSCodJustCanc}: 1 = Erro na Emissão, 2 = Serviço não Prestado, 9 = Outros
+     * @param xMotivo {@code TSMotivo}: 15 a 255 caracteres
+     */
+    public static ResultadoEvento cancelar(Sefaz4jConfig config, String chaveAcesso, String cnpjAutor, int cMotivo, String xMotivo) {
+        exigirChaveAcessoValida(chaveAcesso);
+        exigirCnpjValido(cnpjAutor);
+        if (cMotivo != 1 && cMotivo != 2 && cMotivo != 9) {
+            throw new IllegalArgumentException(
+                "O campo 'cMotivo' deve ser 1 (Erro na Emissão), 2 (Serviço não Prestado) ou 9 (Outros), obteve: " + cMotivo
+            );
+        }
+        exigirTamanho(xMotivo, TAMANHO_MINIMO_X_MOTIVO, TAMANHO_MAXIMO_X_MOTIVO, "xMotivo");
+
+        String tpAmb = String.valueOf(config.getAmbiente().getTpAmb());
+        // Mesmo instante para dhEvento (infPedReg) e dhProc (infEvento): neste fluxo síncrono o
+        // pedido do autor e o processamento são o mesmo momento.
+        String agora = EventoNFSeXmlBuilder.agora();
+        String tipoEvento = EventoNFSeXmlBuilder.TIPO_EVENTO_CANCELAMENTO;
+
+        String pedRegEventoXml = EventoNFSeXmlBuilder.montarPedRegEvento(
+            tpAmb, cnpjAutor, chaveAcesso, tipoEvento, agora,
+            EventoNFSeXmlBuilder.fragmentoCancelamento(String.valueOf(cMotivo), xMotivo)
+        );
+        // Validação em duas passadas (mesma convenção do evento de CT-e): o pedRegEvento é declarado
+        // como elemento raiz próprio em pedRegEvento_v1.01.xsd, então é validável isolado ANTES de
+        // ser embutido; o evento completo só valida depois de assinado (TCEvento exige ds:Signature).
+        ValidadorXsd.validar(pedRegEventoXml, PED_REG_EVENTO_XSD_RAIZ);
+
+        Document documento = EventoNFSeXmlBuilder.envolverEmEvento(chaveAcesso, tipoEvento, agora, pedRegEventoXml);
+        // Só o infEvento externo é assinado — o ds:Signature do pedRegEvento é minOccurs="0" no
+        // TCPedRegEvt e esta biblioteca não o gera.
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFSE_NAMESPACE, "infEvento", ALGORITMO_ASSINATURA, ALGORITMO_DIGEST);
+
+        String xmlEventoAssinado = serializarDocumento(documento);
+        ValidadorXsd.validar(xmlEventoAssinado, EVENTO_XSD_RAIZ);
+
+        return transmitirEvento(config, chaveAcesso, xmlEventoAssinado);
+    }
+
+    private static ResultadoEvento transmitirEvento(Sefaz4jConfig config, String chaveAcesso, String xmlEventoAssinado) {
+        String url = (config.getUrlOverride() != null ? config.getUrlOverride() : baseUrlEmissao(config))
+            + "/" + chaveAcesso + "/eventos";
+
+        String corpoJson = PayloadCompactado.montarRequisicaoJson(CAMPO_JSON_EVENTO, xmlEventoAssinado);
+        String respostaBruta = SefazHttpClient.postar(
+            url,
+            "application/json",
+            corpoJson,
+            config.getPfxBytes(),
+            config.getSenhaPfx(),
+            config.getTimeout()
+        );
+
+        RespostaNFSe resposta = RespostaNFSeParser.parsear(respostaBruta, CAMPO_JSON_EVENTO);
+
+        if (!resposta.isSucesso()) {
+            return new ResultadoEvento(false, resposta.getCodigoErro(), resposta.getMensagemErro(), null);
+        }
+
+        // O leiaute de evento (tiposEventos_v1.01.xsd / evento_v1.01.xsd) NÃO tem nenhum campo de
+        // status: não existe cStat em TCInfEvento nem em TCInfPedReg, e não há um "retEvento" com
+        // enumeração de status equivalente ao TStat da NFS-e. Portanto CSTAT_SUCESSO (100/102/103/107,
+        // do TStat de TCInfNFSe) NÃO se aplica aqui. O único sinal confiável de rejeição de negócio é
+        // o array JSON "erros", já tratado acima — gatear o ok num cStat não confirmado produziria
+        // falsos ok=false. O cStat abaixo é oportunista: se o ADN devolver algo com esse nome, ele é
+        // repassado ao chamador para inspeção; caso contrário fica null.
+        String cStat = extrairTextoDoElemento(resposta.getXmlDescomprimido(), "cStat");
+        return new ResultadoEvento(true, cStat, null, resposta.getXmlDescomprimido());
+    }
+
+    private static void exigirCnpjValido(String cnpj) {
+        if (cnpj == null || !cnpj.matches("[0-9A-Z]{14}")) {
+            throw new IllegalArgumentException(
+                "O campo 'cnpjAutor' deve ter exatamente 14 caracteres em [0-9A-Z] (TSCNPJ), obteve: '" + cnpj + "'"
+            );
+        }
+    }
+
+    private static void exigirTamanho(String texto, int tamanhoMinimo, int tamanhoMaximo, String nomeCampo) {
+        if (texto == null || texto.length() < tamanhoMinimo || texto.length() > tamanhoMaximo) {
+            throw new IllegalArgumentException(
+                "O campo '" + nomeCampo + "' deve ter entre " + tamanhoMinimo + " e " + tamanhoMaximo + " caracteres"
+            );
+        }
     }
 
     private static void exigirChaveAcessoValida(String chaveAcesso) {
@@ -152,7 +257,7 @@ public final class Sefaz4jNFSe {
             transformer.transform(new DOMSource(documento), new StreamResult(writer));
             return writer.toString();
         } catch (Exception e) {
-            throw new IllegalStateException("Falha ao serializar o XML da DPS", e);
+            throw new IllegalStateException("Falha ao serializar o XML da NFS-e", e);
         }
     }
 }

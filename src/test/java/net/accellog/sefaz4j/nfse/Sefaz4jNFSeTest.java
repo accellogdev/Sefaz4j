@@ -31,6 +31,7 @@ import java.security.KeyStore;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class Sefaz4jNFSeTest {
@@ -323,6 +324,165 @@ public class Sefaz4jNFSeTest {
             assertTrue("cStat " + cStatDeSucesso + " deveria ser ok=true", resultado.isOk());
             assertEquals(cStatDeSucesso, resultado.getCStat());
         }
+    }
+
+    /**
+     * Chave de 50 caracteres compatível com {@code TSChaveNFSe} E com os patterns de
+     * {@code TSIdPedRegEvt}/{@code TSIdEvento} (que exigem, nas posições 9 a 23, o tipo de inscrição
+     * federal "1"/"2" seguido dos 14 caracteres da inscrição). A
+     * {@link #CHAVE_ACESSO_VALIDA_50_CHARS} usada pelos testes de consulta NÃO serve aqui: ela tem
+     * '3' na 9ª posição e reprovaria nos patterns dos dois Ids.
+     */
+    private static final String CHAVE_ACESSO_EVENTO = "35503081" + "2" + "12345678000195" + "1000000000001" + "2508" + "000012345" + "0";
+
+    private static final String CNPJ_AUTOR = "12345678000195";
+    private static final String X_MOTIVO_VALIDO = "Cancelamento por erro na emissao da nota";
+
+    /**
+     * Caminho feliz de {@code cancelar}: monta o evento de 4 níveis, valida o {@code pedRegEvento}
+     * isolado, assina o {@code infEvento}, valida o {@code evento} completo e transmite. Também
+     * inspeciona o corpo que chegou ao servidor para provar que o evento transmitido é mesmo o
+     * {@code e101101} (e não outro tipo) — sem essa verificação, uma troca de tipo de evento passaria
+     * despercebida, exatamente o defeito que a fase 2 do CT-e encontrou.
+     */
+    @Test
+    public void cancelarAssinaValidaETransmiteOEventoE101101() {
+        String[] xmlRecebido = new String[1];
+        String[] pathRecebido = new String[1];
+
+        servidor.createContext("/nfse-cancelar", exchange -> {
+            pathRecebido[0] = exchange.getRequestURI().getPath();
+            String corpoRequisicao = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            xmlRecebido[0] = xmlDoCampoGZipB64(corpoRequisicao, "eventoXmlGZipB64");
+
+            String xmlEventoProcessado = "<evento xmlns=\"http://www.sped.fazenda.gov.br/nfse\" versao=\"1.01\">"
+                + "<infEvento Id=\"EVT123\"><cStat>135</cStat></infEvento></evento>";
+            String corpoJson = "{\"eventoXmlGZipB64\":\""
+                + net.accellog.sefaz4j.nfse.webservice.PayloadCompactado.comprimirECodificar(xmlEventoProcessado) + "\"}";
+            byte[] resposta = corpoJson.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, pfxBytes, "teste123");
+        config.setUrlOverride("https://localhost:" + servidor.getAddress().getPort() + "/nfse-cancelar");
+
+        ResultadoEvento resultado = Sefaz4jNFSe.cancelar(config, CHAVE_ACESSO_EVENTO, CNPJ_AUTOR, 1, X_MOTIVO_VALIDO);
+
+        assertTrue(resultado.isOk());
+        assertEquals("135", resultado.getCStat());
+        assertTrue(resultado.getProtocoloXml().contains("<infEvento Id=\"EVT123\">"));
+
+        assertEquals("/nfse-cancelar/" + CHAVE_ACESSO_EVENTO + "/eventos", pathRecebido[0]);
+
+        String xmlEnviado = xmlRecebido[0];
+        assertTrue("o XML transmitido deve conter o elemento do evento de cancelamento",
+            xmlEnviado.contains("<e101101"));
+        assertTrue("o xDesc é uma enumeração de valor único no TE101101",
+            xmlEnviado.contains("<xDesc>Cancelamento de NFS-e</xDesc>"));
+        assertTrue(xmlEnviado.contains("<cMotivo>1</cMotivo>"));
+        assertTrue(xmlEnviado.contains("<xMotivo>" + X_MOTIVO_VALIDO + "</xMotivo>"));
+        assertTrue("o pedRegEvento deve estar embutido no infEvento", xmlEnviado.contains("<pedRegEvento"));
+        assertTrue(xmlEnviado.contains("Id=\"EVT" + CHAVE_ACESSO_EVENTO + "101101001\""));
+        assertTrue(xmlEnviado.contains("Id=\"PRE" + CHAVE_ACESSO_EVENTO + "101101\""));
+        // O Santuario serializa a assinatura com o prefixo "ds:", por isso a asserção é feita sobre o
+        // nome local e sobre a URI referenciada, não sobre uma tag literal sem prefixo.
+        assertTrue("o infEvento deve ter sido assinado", xmlEnviado.contains("SignatureValue"));
+        assertTrue("a assinatura deve referenciar o Id do infEvento",
+            xmlEnviado.contains("URI=\"#EVT" + CHAVE_ACESSO_EVENTO + "101101001\""));
+    }
+
+    /**
+     * O leiaute de evento da NFS-e não tem NENHUM campo de status (não há cStat em
+     * {@code tiposEventos_v1.01.xsd}), então o único sinal confiável de rejeição de negócio é o array
+     * JSON {@code erros} — o mesmo caminho já usado por emissão/consulta.
+     */
+    @Test
+    public void cancelarRetornaRejeitadoSemLancarExcecao() {
+        servidor.createContext("/nfse-cancelar-rejeitado", exchange -> {
+            String corpoJson = "{\"erros\":[{\"Codigo\":\"E1234\",\"Descricao\":\"NFS-e ja cancelada\"}]}";
+            byte[] resposta = corpoJson.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, pfxBytes, "teste123");
+        config.setUrlOverride("https://localhost:" + servidor.getAddress().getPort() + "/nfse-cancelar-rejeitado");
+
+        ResultadoEvento resultado = Sefaz4jNFSe.cancelar(config, CHAVE_ACESSO_EVENTO, CNPJ_AUTOR, 2, X_MOTIVO_VALIDO);
+
+        assertFalse(resultado.isOk());
+        assertEquals("E1234", resultado.getCStat());
+        assertEquals("NFS-e ja cancelada", resultado.getMensagem());
+    }
+
+    /**
+     * Uma resposta de evento aceita mas sem nenhum cStat (o caso esperado, já que o schema de evento
+     * não tem esse campo) continua sendo ok=true: gatear o sucesso num cStat não confirmado
+     * produziria um falso ok=false, o mesmo defeito que o {@code emitir} já teve.
+     */
+    @Test
+    public void cancelarRetornaOkMesmoQuandoARespostaNaoTrazCStat() {
+        servidor.createContext("/nfse-cancelar-sem-cstat", exchange -> {
+            String xmlEventoProcessado = "<evento xmlns=\"http://www.sped.fazenda.gov.br/nfse\" versao=\"1.01\">"
+                + "<infEvento Id=\"EVT999\"><nSeqEvento>001</nSeqEvento></infEvento></evento>";
+            String corpoJson = "{\"eventoXmlGZipB64\":\""
+                + net.accellog.sefaz4j.nfse.webservice.PayloadCompactado.comprimirECodificar(xmlEventoProcessado) + "\"}";
+            byte[] resposta = corpoJson.getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, pfxBytes, "teste123");
+        config.setUrlOverride("https://localhost:" + servidor.getAddress().getPort() + "/nfse-cancelar-sem-cstat");
+
+        ResultadoEvento resultado = Sefaz4jNFSe.cancelar(config, CHAVE_ACESSO_EVENTO, CNPJ_AUTOR, 9, X_MOTIVO_VALIDO);
+
+        assertTrue(resultado.isOk());
+        assertNull(resultado.getCStat());
+        assertTrue(resultado.getProtocoloXml().contains("EVT999"));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void cancelarRejeitaChaveAcessoInvalida() {
+        Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, pfxBytes, "teste123");
+
+        Sefaz4jNFSe.cancelar(config, "chave-muito-curta", CNPJ_AUTOR, 1, X_MOTIVO_VALIDO);
+    }
+
+    /** {@code TSCodJustCanc} enumera só 1, 2 e 9. */
+    @Test(expected = IllegalArgumentException.class)
+    public void cancelarRejeitaCMotivoForaDaEnumeracao() {
+        Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, pfxBytes, "teste123");
+
+        Sefaz4jNFSe.cancelar(config, CHAVE_ACESSO_EVENTO, CNPJ_AUTOR, 3, X_MOTIVO_VALIDO);
+    }
+
+    /** {@code TSMotivo} exige de 15 a 255 caracteres. */
+    @Test(expected = IllegalArgumentException.class)
+    public void cancelarRejeitaXMotivoCurtoDemais() {
+        Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, pfxBytes, "teste123");
+
+        Sefaz4jNFSe.cancelar(config, CHAVE_ACESSO_EVENTO, CNPJ_AUTOR, 1, "curto");
+    }
+
+    /** {@code TSCNPJ} é {@code [0-9A-Z]{14}}. */
+    @Test(expected = IllegalArgumentException.class)
+    public void cancelarRejeitaCnpjAutorInvalido() {
+        Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, pfxBytes, "teste123");
+
+        Sefaz4jNFSe.cancelar(config, CHAVE_ACESSO_EVENTO, "123", 1, X_MOTIVO_VALIDO);
+    }
+
+    private static String xmlDoCampoGZipB64(String corpoJson, String campo) throws java.io.IOException {
+        com.fasterxml.jackson.databind.JsonNode raiz = new com.fasterxml.jackson.databind.ObjectMapper().readTree(corpoJson);
+        return net.accellog.sefaz4j.nfse.webservice.PayloadCompactado
+            .decodificarEDescomprimir(raiz.get(campo).asText());
     }
 
     /**
