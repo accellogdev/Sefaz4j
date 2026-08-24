@@ -11,6 +11,8 @@ import net.accellog.sefaz4j.validacao.ValidadorXsd;
 import net.accellog.sefaz4j.webservice.RespostaSefaz;
 import net.accellog.sefaz4j.webservice.RespostaSefazParser;
 import net.accellog.sefaz4j.webservice.SefazHttpClient;
+import org.apache.xml.security.algorithms.MessageDigestAlgorithm;
+import org.apache.xml.security.signature.XMLSignature;
 import org.w3c.dom.Document;
 import org.w3c.dom.NodeList;
 
@@ -65,7 +67,7 @@ public final class Sefaz4jCTe {
 
         Document documento = montarDocumento(cte);
 
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), CTE_NAMESPACE, "infCte");
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), CTE_NAMESPACE, "infCte", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
 
         String xmlAssinado = serializarDocumento(documento);
 
@@ -134,7 +136,7 @@ public final class Sefaz4jCTe {
         Document documento = EventoCTeXmlBuilder.montar(
             cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110111", 1, CTE_VERSAO, detEvento
         );
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), CTE_NAMESPACE, "infEvento");
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), CTE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
         String xmlEventoAssinado = serializarDocumento(documento);
 
         return enviarEProcessarEvento(config, xmlEventoAssinado);
@@ -182,7 +184,7 @@ public final class Sefaz4jCTe {
         Document documento = EventoCTeXmlBuilder.montar(
             cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110110", nSeqEvento, CTE_VERSAO, detEvento
         );
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), CTE_NAMESPACE, "infEvento");
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), CTE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
         String xmlEventoAssinado = serializarDocumento(documento);
 
         return enviarEProcessarEvento(config, xmlEventoAssinado);

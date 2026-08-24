@@ -14,6 +14,8 @@ import net.accellog.sefaz4j.webservice.RespostaSefazParser;
 import net.accellog.sefaz4j.webservice.SefazHttpClient;
 import net.accellog.sefaz4j.nfe.xml.EventoXmlBuilder;
 import net.accellog.sefaz4j.nfe.xml.NFeXmlBuilder;
+import org.apache.xml.security.algorithms.MessageDigestAlgorithm;
+import org.apache.xml.security.signature.XMLSignature;
 import org.w3c.dom.Document;
 import org.w3c.dom.NodeList;
 
@@ -65,7 +67,7 @@ public final class Sefaz4jNFe {
 
         Document documento = montarDocumento(nfe);
 
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infNFe");
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infNFe", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
 
         String xmlAssinado = serializarDocumento(documento);
 
@@ -171,7 +173,7 @@ public final class Sefaz4jNFe {
             "</detEvento>";
 
         Document documento = EventoXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110111", 1, "1.00", detEvento);
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infEvento");
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
         String xmlEventoAssinado = serializarDocumento(documento);
 
         return enviarEProcessarEvento(config, xmlEventoAssinado, "eventoCancNFe_v1.00.xsd");
@@ -203,7 +205,7 @@ public final class Sefaz4jNFe {
             "</detEvento>";
 
         Document documento = EventoXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110110", nSeqEvento, "1.00", detEvento);
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infEvento");
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
         String xmlEventoAssinado = serializarDocumento(documento);
 
         return enviarEProcessarEvento(config, xmlEventoAssinado, "CCe_v1.00.xsd");
@@ -250,7 +252,7 @@ public final class Sefaz4jNFe {
             "</inutNFe>";
 
         Document documento = parseXmlParaDocumento(xmlInutilizacao);
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infInut");
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infInut", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
         String xmlAssinado = serializarDocumento(documento);
 
         ValidadorXsd.validar(xmlAssinado, "/schemas/nfe/inutNFe_v4.00.xsd");

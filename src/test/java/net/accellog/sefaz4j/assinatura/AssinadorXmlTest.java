@@ -6,6 +6,8 @@ import net.accellog.sefaz4j.nfe.model.TNFe;
 import net.accellog.sefaz4j.nfe.model.TUfEmi;
 import net.accellog.sefaz4j.validacao.ValidadorXsd;
 import net.accellog.sefaz4j.nfe.xml.NFeXmlBuilder;
+import org.apache.xml.security.algorithms.MessageDigestAlgorithm;
+import org.apache.xml.security.signature.XMLSignature;
 import org.junit.Test;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -44,7 +46,7 @@ public class AssinadorXmlTest {
     public void assinaEAdicionaElementoSignatureComoUltimoFilhoDeNFe() throws Exception {
         Document documento = parseDocumento(XML_NAO_ASSINADO);
 
-        AssinadorXml.assinar(documento, pfxBytes(), "teste123", NFE_NAMESPACE, "infNFe");
+        AssinadorXml.assinar(documento, pfxBytes(), "teste123", NFE_NAMESPACE, "infNFe", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
 
         Element raizNFe = documento.getDocumentElement();
         NodeList assinaturas = raizNFe.getElementsByTagNameNS("http://www.w3.org/2000/09/xmldsig#", "Signature");
@@ -55,7 +57,7 @@ public class AssinadorXmlTest {
     @Test(expected = CertificadoException.class)
     public void rejeitaSenhaErrada() throws Exception {
         Document documento = parseDocumento(XML_NAO_ASSINADO);
-        AssinadorXml.assinar(documento, pfxBytes(), "senha-errada", NFE_NAMESPACE, "infNFe");
+        AssinadorXml.assinar(documento, pfxBytes(), "senha-errada", NFE_NAMESPACE, "infNFe", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
     }
 
     private static final String EVENTO_NAO_ASSINADO =
@@ -75,7 +77,7 @@ public class AssinadorXmlTest {
     public void assinaEventoEAdicionaElementoSignatureComoUltimoFilhoDeEvento() throws Exception {
         Document documento = parseDocumento(EVENTO_NAO_ASSINADO);
 
-        AssinadorXml.assinar(documento, pfxBytes(), "teste123", NFE_NAMESPACE, "infEvento");
+        AssinadorXml.assinar(documento, pfxBytes(), "teste123", NFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
 
         Element raizEvento = documento.getDocumentElement();
         NodeList assinaturas = raizEvento.getElementsByTagNameNS("http://www.w3.org/2000/09/xmldsig#", "Signature");
@@ -103,7 +105,7 @@ public class AssinadorXmlTest {
     public void documentoAssinadoPorAssinadorXmlPassaNaValidacaoXsd() throws Exception {
         Document documento = NFeXmlBuilder.marcarChaveEMontarDocumento(montarNfeMinimaValida());
 
-        AssinadorXml.assinar(documento, pfxBytes(), "teste123", NFE_NAMESPACE, "infNFe");
+        AssinadorXml.assinar(documento, pfxBytes(), "teste123", NFE_NAMESPACE, "infNFe", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
 
         String xmlAssinado = serializar(documento);
 

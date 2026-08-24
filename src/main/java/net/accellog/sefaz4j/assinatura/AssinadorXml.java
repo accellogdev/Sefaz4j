@@ -1,6 +1,7 @@
 package net.accellog.sefaz4j.assinatura;
 
 import org.apache.xml.security.Init;
+import org.apache.xml.security.algorithms.MessageDigestAlgorithm;
 import org.apache.xml.security.c14n.Canonicalizer;
 import org.apache.xml.security.signature.XMLSignature;
 import org.apache.xml.security.transforms.Transforms;
@@ -20,7 +21,7 @@ public final class AssinadorXml {
     private AssinadorXml() {
     }
 
-    public static void assinar(Document documentoNaoAssinado, byte[] pfxBytes, String senha, String namespace, String nomeElemento) {
+    public static void assinar(Document documentoNaoAssinado, byte[] pfxBytes, String senha, String namespace, String nomeElemento, String algoritmoAssinatura, String algoritmoDigest) {
         KeyStore.PrivateKeyEntry chavePrivada = CertificadoA1.carregar(pfxBytes, senha);
 
         NodeList elementos = documentoNaoAssinado.getElementsByTagNameNS(namespace, nomeElemento);
@@ -31,20 +32,22 @@ public final class AssinadorXml {
         elementoAssinado.setIdAttribute("Id", true);
 
         try {
-            // O schema oficial bundled (xmldsig-core-schema_v1.01.xsd, tanto o do NFe quanto o do
-            // CTe) fixa SignatureMethod/DigestMethod em rsa-sha1/sha1 e restringe os Transform
-            // aceitos a enveloped-signature + C14N puro (sem "WithComments") — não são valores
-            // default, são <xsd:restriction> fixas. SEFAZ exige RSA-SHA1 para a assinatura do DFe
-            // em si (TLS é outro assunto, não afetado por esta escolha). Vale para qualquer
-            // elemento assinado de qualquer documento (infNFe/infEvento/infInut/infCte).
+            // O algoritmo de assinatura e digest agora é parametrizado, permitindo diferentes
+            // document types (p.ex. NFe/CTe usam RSA-SHA1/SHA-1 conforme exigência dos schemas
+            // oficiais bundled xmldsig-core-schema_v1.01.xsd, enquanto NFSe pode usar RSA-SHA256).
+            // Para NFe/CTe, o schema oficial fixa SignatureMethod/DigestMethod em rsa-sha1/sha1
+            // e restringe os Transform aceitos a enveloped-signature + C14N puro (sem "WithComments")
+            // — não são valores default, são <xsd:restriction> fixas. SEFAZ exige RSA-SHA1 para a
+            // assinatura do DFe em si (TLS é outro assunto, não afetado por esta escolha). Vale
+            // para qualquer elemento assinado de qualquer documento (infNFe/infEvento/infInut/infCte).
             XMLSignature assinatura = new XMLSignature(
-                documentoNaoAssinado, "", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1
+                documentoNaoAssinado, "", algoritmoAssinatura
             );
 
             Transforms transforms = new Transforms(documentoNaoAssinado);
             transforms.addTransform(Transforms.TRANSFORM_ENVELOPED_SIGNATURE);
             transforms.addTransform(Transforms.TRANSFORM_C14N_OMIT_COMMENTS);
-            assinatura.addDocument("#" + id, transforms, org.apache.xml.security.algorithms.MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
+            assinatura.addDocument("#" + id, transforms, algoritmoDigest);
 
             assinatura.addKeyInfo((X509Certificate) chavePrivada.getCertificate());
             assinatura.sign(chavePrivada.getPrivateKey());
