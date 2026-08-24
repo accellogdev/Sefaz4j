@@ -9,7 +9,9 @@ XSD-validates, and transmits Brazilian NFe (electronic invoices) 4.00 to SEFAZ w
 mutual-TLS SOAP. It targets the A1 (software-certificate) emission flow. CTe (Conhecimento de
 Transporte Eletrônico) 4.00 emission was added alongside NFe as the library's second document type,
 later joined by its post-emission lifecycle (see "## CTe (emissão + ciclo de vida pós-emissão)" below);
-the two share the same root infrastructure packages.
+the two share the same root infrastructure packages. NFS-e (Padrão Nacional / SEFIN Nacional) is the
+third document type (see "## NFS-e (Padrão Nacional)" below) and the architectural outlier: REST+JSON
+transport instead of SOAP, and a single national endpoint instead of per-UF ones.
 
 ## Build & test
 
@@ -34,7 +36,8 @@ and only re-included by the `integration-tests` Maven profile. Even then, it sel
 ## Public API
 
 Everything an NFe consumer needs lives in the top-level package `net.accellog.sefaz4j.nfe` (the CTe
-equivalent, `net.accellog.sefaz4j.cte`, is documented in its own section below):
+equivalent, `net.accellog.sefaz4j.cte`, and the NFS-e equivalent, `net.accellog.sefaz4j.nfse`, are
+documented in their own sections below):
 
 - **`Sefaz4jNFe`** — the facade. `emitir(Sefaz4jConfig, TNFe)` builds the chave de acesso, signs, XSD-validates,
   transmits, and (if the lot is still processing) polls `NFeRetAutorizacao4`, returning a `ResultadoEmissao`.
@@ -124,11 +127,110 @@ exception for any v4.00 inutilização call, and no `CTeInutilizacao_4.00` key e
   content themselves and sets it on the `TCTe` before calling `emitir`. None of the `cteModal*.xsd`
   files are bundled or referenced anywhere in the library.
 
+## NFS-e (Padrão Nacional)
+
+`net.accellog.sefaz4j.nfse` is the third document type, and architecturally the outlier of the three:
+transport is **REST+JSON, not SOAP**, and there is **no UF/Ambiente-per-state split** — a single
+national endpoint (ADN/SEFIN Nacional) serves every municipality, so
+`net.accellog.sefaz4j.nfse.Sefaz4jConfig` takes no `UF` constructor argument (unlike the NFe/CTe
+configs). The signed XML is gzip-compressed, Base64-encoded, and wrapped in a small JSON object for
+both request and response (see `net.accellog.sefaz4j.nfse.webservice.PayloadCompactado`/
+`RespostaNFSeParser`), mirroring the pattern in reverse for the response.
+
+- **`Sefaz4jNFSe`** — the facade, with 5 methods:
+  - `emitir(Sefaz4jConfig config, TCDPS dps): ResultadoEmissao` — injects `infDPS/@Id` (via
+    `DpsIdCalculator`) if absent, signs `infDPS`, XSD-validates against `DPS_v1.01.xsd`, POSTs the
+    compressed/encoded JSON body, and parses the response.
+  - `enviarXmlAssinado(Sefaz4jConfig config, String xmlAssinado): ResultadoEmissao` — skips straight
+    to validate+transmit for an already-signed DPS XML.
+  - `consultarSituacao(Sefaz4jConfig config, String chaveAcesso): ResultadoConsulta` — GETs
+    `{baseUrl}/{chaveAcesso}`.
+  - `cancelar(Sefaz4jConfig config, String chaveAcesso, String cnpjAutor, int cMotivo, String xMotivo): ResultadoEvento`
+    — builds+signs the `e101101` event and POSTs it to `{baseUrl}/{chaveAcesso}/eventos`.
+  - `cancelarPorSubstituicao(Sefaz4jConfig config, String chaveAntiga, String cnpjAutor, TCDPS dpsSubstituta): ResultadoEvento`
+    — issues the substitute DPS via `emitir`; only if that emission's own `ResultadoEmissao.isOk()` is
+    `true` does it then build+sign the `e105102` event referencing both the old and new keys. If the
+    substitute emission fails (technically or by business rejection), the event is never attempted and
+    the returned `ResultadoEvento` carries the failed emission's `cStat`/`mensagem` instead.
+- **The document Sefaz4j builds/signs is `net.accellog.sefaz4j.nfse.model.TCDPS`** (JAXB-generated
+  from `DPS_v1.01.xsd`) — the DPS (Declaração de Prestação de Serviços), analogous to how NFe/CTe
+  build `TNFe`/`TCTe`. The root XML element is `<DPS>` (`ObjectFactory.createDPS`), but its Java type
+  is `TCDPS`, not a class literally named `DPS`.
+- **Three distinct, non-interchangeable identifiers:**
+  1. `infDPS/@Id` — the DPS's own Id, computed locally by `net.accellog.sefaz4j.nfse.chave.DpsIdCalculator`
+     when absent: `"DPS" + cLocEmi(7) + tipoInscricaoFederal(1) + inscricaoFederal(14) + serie(5) +
+     nDPS(15)`, pure concatenation with **no check digit** — a different algorithm from NFe/CTe's
+     mod-11 `ChaveAcessoCalculator`. This is why `DpsIdCalculator` lives under `nfse.chave` rather than
+     the shared root `chave` package.
+  2. `chaveAcesso`/`chNFSe` — the NFS-e's own access key. Sefaz4j **never computes this one**: it's
+     read from the `"chaveAcesso"` field of the server's JSON response to `emitir`/`enviarXmlAssinado`
+     (exposed as `ResultadoEmissao.getChaveAcesso()`) and thereafter passed back in as an opaque
+     `String` to `consultarSituacao`/`cancelar`/`cancelarPorSubstituicao` (only locally checked to be
+     50 alphanumeric characters, never otherwise validated or parsed).
+  3. `infNFSe/@Id` (`TSIdNFSe`) — an attribute embedded inside the *returned* NFS-e XML itself
+     (present in `getXmlAutorizado()`'s raw text). Sefaz4j never parses it out or computes it; it's
+     just along for the ride inside the XML.
+- **Event structure is 4 levels deep, unlike NFe/CTe's 2.** NFe/CTe events nest `evento` →
+  `infEvento` (signed) → an event-specific fragment. NFS-e nests `evento` → `infEvento` (signed,
+  required) → `pedRegEvento` (embedded; also independently declared as its own root element in
+  `pedRegEvento_v1.01.xsd`, enabling the same two-pass validation convention already used for CTe
+  events) → `infPedReg` → the event-specific element (`e101101`/`e105102`). Two separately-computed
+  `Id` attributes exist with **different formulas** — see
+  `net.accellog.sefaz4j.nfse.xml.EventoNFSeXmlBuilder`'s class javadoc for the full derivation,
+  including a documented XSD self-contradiction the implementer found and resolved (`TSIdPedRegEvt`'s
+  doc comment says `"PRE"` + key + event type + `nPedRegEvento`, but its own `maxLength`/pattern only
+  leave room for key + event type — no `nPedRegEvento` — so the pattern, which the validator actually
+  enforces, wins over the comment).
+- **`cnpjAutor` is an explicit parameter on `cancelar`/`cancelarPorSubstituicao`**, unlike NFe/CTe,
+  which derive the equivalent CNPJ by slicing a fixed substring out of their own access key
+  (`chaveAcesso.substring(6, 20)`). NFS-e's `chNFSe` has no internal byte layout confirmed in this
+  library from which to safely extract a CNPJ, so the caller must supply it directly.
+- **`cancelarPorSubstituicao`'s `cMotivo`/`xMotivo` are NOT separate parameters** — they come from
+  `dpsSubstituta.getInfDPS().getSubst()` (a `TCSubstituicao`), because `TE105102`'s own XSD
+  documentation states these fields are sourced from the DPS's `subst` group. The facade validates
+  that `subst.getChSubstda()` equals `chaveAntiga` and throws `IllegalArgumentException` early if
+  `subst` is null or mismatched.
+- **No Carta de Correção equivalent exists in this standard** — `cancelarPorSubstituicao`
+  (substituição) is the mechanism used to correct an already-issued NFS-e instead.
+- **Confirmação/rejeição events (tomador/intermediário) are explicitly out of scope** for this plan
+  (a separate "Plano B" scoped out at design time, not yet implemented) — don't assume they exist in
+  this library.
+- **Operational caveat:** `cancelarPorSubstituicao` has no atomicity between issuing the substitute
+  DPS and submitting the cancellation event. If the substitute is issued successfully but the event
+  submission then fails, the new NFS-e exists and the old one remains active — there is no dedicated
+  "retry just the event" method.
+
+### Unverified/unconfirmed protocol details (NFS-e)
+
+Several aspects of the NFS-e (SEFIN Nacional/ADN) integration are **best-effort guesses, not verified
+facts**, each flagged with an `ATENÇÃO` comment at its definition site in `Sefaz4jNFSe.java` (or, for
+the last item, in `DpsXmlBuilder.java`). A future session must not treat these as settled:
+
+- **Signing algorithm** — `ALGORITMO_ASSINATURA`/`ALGORITMO_DIGEST` are RSA-SHA256/SHA-256, chosen as
+  "the most likely modern federal default"; never tested against a real Homologação endpoint.
+- **Event JSON field name** — `CAMPO_JSON_EVENTO = "eventoXmlGZipB64"` is inferred purely from the
+  naming convention already observed in `dpsXmlGZipB64`/`nfseXmlGZipB64`, not confirmed against the
+  SEFIN Nacional integration manual.
+- **Event submission endpoint path** — `{baseUrl}/{chaveAcesso}/eventos`, not confirmed.
+- **Which document the ADN expects signed for an event submission** — the current code assumes the
+  full `evento`, signed at its outer, required `infEvento` signature (mirroring NFe/CTe's convention
+  of signing the outermost wrapper). The unruled-out alternative is that the ADN instead wants just
+  the embedded `pedRegEvento` signed at its own optional (`minOccurs="0"`) `infPedReg` signature. If
+  Homologação rejects the current choice, `EventoNFSeXmlBuilder` already separates
+  `montarPedRegEvento`/`envolverEmEvento`, so the fix is isolated to signing/transmitting the former
+  instead of the latter.
+- **CNPJ/CPF-type-code mapping used when auto-generating `infDPS/@Id`**
+  (`DpsXmlBuilder.injetarIdSeAusente`) — the numeric codes (CNPJ=2, CPF=1, NIF=3, cNaoNIF=9) and the
+  left-zero-pad-to-14 convention are a best-effort placeholder, not confirmed against any official
+  manual or the ACBr reference implementation.
+
 ## Package layout
 
-- `net.accellog.sefaz4j.nfe` / `net.accellog.sefaz4j.cte` — the two document-specific facades and
-  their config/result types, described above. The shared infrastructure packages below
-  (`chave`, `assinatura`, `validacao`, `webservice`, `endpoints`) live at the root and are used by both.
+- `net.accellog.sefaz4j.nfe` / `net.accellog.sefaz4j.cte` / `net.accellog.sefaz4j.nfse` — the three
+  document-specific facades and their config/result types, described above. The shared infrastructure
+  packages below (`chave`, `assinatura`, `validacao`, `webservice`, `endpoints`) live at the root and
+  are used by all three (NFS-e's `chave` and event-XML logic is the exception — see the NFS-e section
+  above for why `DpsIdCalculator` lives under `nfse.chave` instead).
 - `net.accellog.sefaz4j.chave` (shared) — `ChaveAcessoCalculator`: builds the 44-digit chave de acesso (43 digits + check digit, mod-11).
 - `net.accellog.sefaz4j.nfe.xml` — `NFeXmlBuilder`: marshals a `TNFe` (JAXB) into a DOM `Document`, injecting `infNFe/@Id` and `ide/cDV`
   from the computed chave when absent.
@@ -136,7 +238,7 @@ exception for any v4.00 inutilização call, and no `CTeInutilizacao_4.00` key e
 - `net.accellog.sefaz4j.assinatura` (shared) — `AssinadorXml` (Apache Santuario XML signature), `CertificadoA1` (PKCS12 loading),
   `CertificadoException`.
 - `net.accellog.sefaz4j.validacao` (shared) — `ValidadorXsd`: validates a serialized XML string against the bundled `nfe_v4.00.xsd`/
-  `cte_v4.00.xsd` chains (root XSD path is a parameter); `ValidacaoXsdException`.
+  `cte_v4.00.xsd`/`DPS_v1.01.xsd`/`evento_v1.01.xsd`/`pedRegEvento_v1.01.xsd` chains (root XSD path is a parameter); `ValidacaoXsdException`.
 - `net.accellog.sefaz4j.webservice` (shared) — `SefazHttpClient` (mutual-TLS `java.net.http.HttpClient`, with per-certificate
   `SSLContext`/`HttpClient` caching), `RespostaSefazParser`, `RespostaSefaz`, `ComunicacaoException`.
 - `net.accellog.sefaz4j.nfe.webservice` — `SoapEnvelopeBuilder`, `ReciboPoller` (polls `NFeRetAutorizacao4` while `cStat == 103`);
@@ -146,11 +248,25 @@ exception for any v4.00 inutilização call, and no `CTeInutilizacao_4.00` key e
   (no `ReciboPoller` equivalent — see the CTe section above).
 - `net.accellog.sefaz4j.endpoints` (shared) — `EndpointResolver` + `UF`/`Ambiente`, backed by `src/main/resources/endpoints/nfe-servicos.ini`
   (NFe) and `cte-servicos.ini` (CTe), selected via a path/section-prefix argument to `EndpointResolver.resolver(...)`.
+  NFS-e reuses only the `Ambiente` enum from here (no `UF`, no ini file): its single national URLs are
+  hardcoded constants in `Sefaz4jNFSe` (`URL_PRODUCAO`/`URL_HOMOLOGACAO`), never routed through
+  `EndpointResolver`.
 - `net.accellog.sefaz4j.nfe.endpoints` — `Servico`; NFe-specific, not shared.
 - `net.accellog.sefaz4j.cte.endpoints` — `Servico` (`CTE_RECEPCAO_SINC`/`CTE_CONSULTA_PROTOCOLO`/
   `CTE_RECEPCAO_EVENTO`); CTe-specific, not shared.
 - `net.accellog.sefaz4j.nfe.model` — **generated** JAXB classes (`TNFe`, `ObjectFactory`, etc.) — do not hand-edit, see below.
 - `net.accellog.sefaz4j.cte.model` — **generated** JAXB classes (`TCTe`, `ObjectFactory`, etc.), from `cte_v4.00.xsd` — do not hand-edit.
+- `net.accellog.sefaz4j.nfse.chave` — `DpsIdCalculator`: pure-concatenation `infDPS/@Id` builder, NOT
+  shared with NFe/CTe's `chave` package (different algorithm, no check digit).
+- `net.accellog.sefaz4j.nfse.xml` — `DpsXmlBuilder` (mirrors `NFeXmlBuilder`/`CTeXmlBuilder`: marshals
+  `TCDPS` to DOM, injecting `infDPS/@Id` when absent) and `EventoNFSeXmlBuilder` (builds the 4-level
+  `evento`/`infEvento`/`pedRegEvento`/`infPedReg` event structure — see the NFS-e section above).
+- `net.accellog.sefaz4j.nfse.webservice` — `PayloadCompactado` (gzip+Base64 compress/decompress and
+  JSON request wrapping), `RespostaNFSeParser`/`RespostaNFSe` (JSON response parsing, including the
+  `erros` array business-rejection path); NFS-e-specific, not shared (no SOAP envelope builder here —
+  there's no SOAP).
+- `net.accellog.sefaz4j.nfse.model` — **generated** JAXB classes (`TCDPS`, `ObjectFactory`, etc.), from
+  `DPS_v1.01.xsd` — do not hand-edit.
 
 ## Key technical facts for future sessions
 

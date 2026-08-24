@@ -1,11 +1,12 @@
 # Sefaz4j
 
-Biblioteca Java pura (sem framework, sem `main`) para emissão e comunicação com a SEFAZ dos
+Biblioteca Java pura (sem framework, sem `main`) para emissão e comunicação com a SEFAZ/ADN dos
 documentos fiscais eletrônicos brasileiros. O objetivo final é cobrir **NFe**, **CTe**, **MDFe** e
-**NFSe**; hoje estão implementados o **ciclo de vida completo da NFe 4.00** e o **ciclo de vida
+**NFSe**; hoje estão implementados o **ciclo de vida completo da NFe 4.00**, o **ciclo de vida
 completo do CTe 4.00** (emissão + consulta/cancelamento/CC-e — a inutilização foi descontinuada pela
-SEFAZ para o CTe 4.00, ver seção do CTe abaixo) — MDFe e NFSe ainda não têm código neste
-repositório.
+SEFAZ para o CTe 4.00, ver seção do CTe abaixo) e a **NFS-e Padrão Nacional** (emissão, consulta,
+cancelamento e cancelamento por substituição, ver seção da NFS-e abaixo; confirmação/rejeição ainda
+não implementada) — MDFe ainda não tem código neste repositório.
 
 O que o pacote de NFe já faz: monta o XML a partir de um objeto JAXB (`TNFe`), calcula a chave de
 acesso, assina digitalmente (XML-DSig), valida contra a XSD oficial da SEFAZ, transmite via SOAP
@@ -21,6 +22,14 @@ definitivos) — e também o ciclo de vida pós-emissão: consulta de situação
 Correção (CC-e). A inutilização de faixa de numeração **não** está implementada para CTe: a SEFAZ a
 descontinuou para o CTe 4.00 (não há chave `CTeInutilizacao_4.00` em nenhuma UF do `ACBrCTeServicos.ini`
 de referência, e a própria ACBr recusa a chamada para essa versão).
+
+O pacote de NFS-e (Padrão Nacional/SEFIN Nacional) é o mais diferente arquiteturalmente dos três: o
+transporte é **REST+JSON, não SOAP**, e não há divisão por UF — um único endpoint nacional (ADN)
+atende todos os municípios. O XML assinado da DPS (Declaração de Prestação de Serviços) é
+comprimido em gzip, codificado em Base64 e enviado dentro de um JSON; a resposta traz a NFS-e pelo
+caminho inverso. Cobre emissão, consulta de situação, cancelamento e cancelamento por substituição
+(não existe Carta de Correção nesse padrão — a substituição cumpre esse papel); eventos de
+confirmação/rejeição do tomador/intermediário ficam para uma etapa futura, fora deste escopo.
 
 ## Requisitos
 
