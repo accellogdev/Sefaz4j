@@ -23,6 +23,22 @@ public final class ValidadorXsd {
     private static final String XSD_NFE = "/schemas/nfe/nfe_v4.00.xsd";
     private static final ConcurrentHashMap<String, Schema> SCHEMAS_CACHE = new ConcurrentHashMap<>();
 
+    static {
+        // mdfeTiposBasico_v3.00.xsd (bundled, matching the official layout) declares
+        // maxOccurs="20000" on infDoc/infMunDescarga/infCTe, above the JDK's default
+        // jdk.xml.maxOccurLimit=5000 guard on *compiling* a schema (unrelated to validating an XML
+        // instance against it — this only governs how large a maxOccurs the schema document itself
+        // may declare). Without this, SchemaFactory.newSchema(...) below throws on the very first
+        // MDF-e validation call in ANY downstream JVM that hasn't separately raised the limit via a
+        // launch flag — which a library consumer has no reason to know it needs to do. Setting it
+        // here, once, before compiling any schema, makes this class self-contained regardless of the
+        // caller's JVM flags. Only setProperty when absent so an explicit caller-provided value (via
+        // -D on the command line) is never silently overridden.
+        if (System.getProperty("jdk.xml.maxOccurLimit") == null) {
+            System.setProperty("jdk.xml.maxOccurLimit", "0");
+        }
+    }
+
     private ValidadorXsd() {
     }
 

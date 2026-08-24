@@ -8,6 +8,7 @@ import net.accellog.sefaz4j.mdfe.model.ObjectFactory;
 import net.accellog.sefaz4j.mdfe.model.TMDFe;
 import net.accellog.sefaz4j.mdfe.model.TEndeEmi;
 import net.accellog.sefaz4j.mdfe.model.TUf;
+import net.accellog.sefaz4j.webservice.ComunicacaoException;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -23,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
+import java.time.Duration;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -144,6 +146,49 @@ public class Sefaz4jMDFeTest {
 
         assertFalse(resultado.isOk());
         assertEquals("204", resultado.getCStat());
+    }
+
+    // Mesmo papel de Sefaz4jNFeTest.enviarXmlAssinadoLancaComunicacaoExceptionQuandoPollingEsgotaAindaEmProcessamento:
+    // se o lote continuar com cStat 103 ("em processamento") mesmo depois de ReciboPoller esgotar
+    // as tentativas, a fachada deve lançar ComunicacaoException — nunca devolver um
+    // ResultadoEmissao(ok=false) indistinguível de uma rejeição de negócio real. Usa um segundo
+    // contexto HTTPS local (retrecepcao) que sempre responde 103, e o override de URL simétrico ao
+    // de recepção para apontar o polling para ele em vez do endpoint real da SEFAZ.
+    @Test(expected = ComunicacaoException.class)
+    public void enviarXmlAssinadoLancaComunicacaoExceptionQuandoPollingEsgotaAindaEmProcessamento() {
+        servidor.createContext("/recepcao-em-processamento", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><mdfeResultMsg xmlns=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeRecepcao\">" +
+                "<retEnviMDFe xmlns=\"http://www.portalfiscal.inf.br/mdfe\" versao=\"3.00\">" +
+                "<cStat>103</cStat><xMotivo>Lote recebido com sucesso</xMotivo>" +
+                "<infRec><nRec>123456789012345</nRec></infRec>" +
+                "</retEnviMDFe></mdfeResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+        servidor.createContext("/retrecepcao-em-processamento", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><mdfeResultMsg xmlns=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeRetRecepcao\">" +
+                "<retConsReciMDFe xmlns=\"http://www.portalfiscal.inf.br/mdfe\" versao=\"3.00\">" +
+                "<cStat>103</cStat><xMotivo>Lote ainda em processamento</xMotivo>" +
+                "</retConsReciMDFe></mdfeResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(
+            UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123",
+            "https://localhost:" + servidor.getAddress().getPort() + "/recepcao-em-processamento"
+        );
+        config.setUrlRetRecepcaoOverride(
+            "https://localhost:" + servidor.getAddress().getPort() + "/retrecepcao-em-processamento"
+        );
+        config.setMaxTentativasPolling(2);
+        config.setIntervaloPolling(Duration.ofMillis(1));
+
+        Sefaz4jMDFe.enviarXmlAssinado(config, xmlMdfeAssinadoValido());
     }
 
     // Cobre o caminho completo montar -> assinar -> validar XSD -> transmitir a partir de um
