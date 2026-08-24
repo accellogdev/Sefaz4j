@@ -409,8 +409,9 @@ just for one version. There is no `Sefaz4jMDFe.inutilizar` and none is planned.
   por cima do bundled.
 - **`src/main/resources/schemas/mdfe/consReciMDFeTiposBasico_v3.00.xsd` difere deliberadamente do
   arquivo oficial da SEFAZ**: o arquivo oficial redefine ali o `xs:complexType` `TProtMDFe`, já
-  definido em `mdfeTiposBasico_v3.00.xsd` (incluído por `tiposGeralMDFe_v3.00.xsd`) — um defeito de
-  autoria genuíno da mesma categoria do já documentado acima para `leiauteCCe_v1.00.xsd`
+  definido diretamente em `mdfeTiposBasico_v3.00.xsd` (que por sua vez inclui
+  `tiposGeralMDFe_v3.00.xsd`, não o contrário) — um defeito de autoria genuíno da mesma categoria do
+  já documentado acima para `leiauteCCe_v1.00.xsd`
   (`TCOrgaoIBGE` duplicado), que o `SchemaFactory`/validador XSD do Java rejeita com
   `sch-props-correct.2` (tipo duplicado no mesmo namespace). O bloco duplicado foi removido desta
   cópia bundled; para que `TRetConsReciMDFe.protMDFe` continue resolvendo `TProtMDFe` quando este
