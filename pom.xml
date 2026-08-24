@@ -174,6 +174,14 @@
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
 				<configuration>
+					<!-- mdfeTiposBasico_v3.00.xsd (bundled from the official layout) declares
+					     maxOccurs="20000" on infDoc/infMunDescarga/infCTe, above the JDK's default
+					     jdk.xml.maxOccurLimit=5000 secure-processing guard on *compiling* a schema
+					     (unrelated to validating XML instances against it). .mvn/jvm.config already
+					     raises this limit for the JVM Maven itself runs in (covering JAXB codegen),
+					     but maven-surefire-plugin forks a separate JVM per test run by default, which
+					     does not inherit .mvn/jvm.config — hence repeating it here via argLine. -->
+					<argLine>-Djdk.xml.maxOccurLimit=0</argLine>
 					<excludes>
 						<exclude>**/integration/**</exclude>
 					</excludes>
