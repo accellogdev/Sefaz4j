@@ -4,9 +4,10 @@ Biblioteca Java pura (sem framework, sem `main`) para emissão e comunicação c
 documentos fiscais eletrônicos brasileiros. O objetivo final é cobrir **NFe**, **CTe**, **MDFe** e
 **NFSe**; hoje estão implementados o **ciclo de vida completo da NFe 4.00**, o **ciclo de vida
 completo do CTe 4.00** (emissão + consulta/cancelamento/CC-e — a inutilização foi descontinuada pela
-SEFAZ para o CTe 4.00, ver seção do CTe abaixo) e a **NFS-e Padrão Nacional** (emissão, consulta,
-cancelamento e cancelamento por substituição, ver seção da NFS-e abaixo; confirmação/rejeição ainda
-não implementada) — MDFe ainda não tem código neste repositório.
+SEFAZ para o CTe 4.00, ver seção do CTe abaixo), o **ciclo de vida completo do MDFe 3.00** (emissão +
+consulta/cancelamento/encerramento/inclusão de condutor — inutilização nunca existiu para o MDFe, ver
+seção do MDFe abaixo) e a **NFS-e Padrão Nacional** (emissão, consulta, cancelamento e cancelamento
+por substituição, ver seção da NFS-e abaixo; confirmação/rejeição ainda não implementada).
 
 O que o pacote de NFe já faz: monta o XML a partir de um objeto JAXB (`TNFe`), calcula a chave de
 acesso, assina digitalmente (XML-DSig), valida contra a XSD oficial da SEFAZ, transmite via SOAP
@@ -23,7 +24,18 @@ Correção (CC-e). A inutilização de faixa de numeração **não** está imple
 descontinuou para o CTe 4.00 (não há chave `CTeInutilizacao_4.00` em nenhuma UF do `ACBrCTeServicos.ini`
 de referência, e a própria ACBr recusa a chamada para essa versão).
 
-O pacote de NFS-e (Padrão Nacional/SEFIN Nacional) é o mais diferente arquiteturalmente dos três: o
+O pacote de MDFe (Manifesto Eletrônico de Documentos Fiscais, `net.accellog.sefaz4j.mdfe`) é o
+quarto documento coberto pela lib e arquiteturalmente mais próximo do NFe do que do CTe: monta o
+XML a partir de um `TMDFe` (JAXB), calcula a chave de acesso, assina, valida contra a XSD oficial e
+transmite via `MDFeRecepcao` — um serviço de **lote**, igual ao NFe (não síncrono como o
+`CTeRecepcaoSinc`) — fazendo o polling de `MDFeRetRecepcao` quando o lote fica "em processamento".
+Cobre também o ciclo de vida pós-emissão: consulta de situação, cancelamento (evento `110111`),
+encerramento (evento `110112`) e inclusão de condutor (evento `110114`, o único dos três que não
+exige o número de protocolo). Não existe inutilização para o MDFe: diferente do CTe, onde a SEFAZ
+apenas descontinuou o recurso na versão 4.00, a inutilização nunca fez parte do padrão MDFe (confirmado
+pela ausência total na implementação de referência ACBr).
+
+O pacote de NFS-e (Padrão Nacional/SEFIN Nacional) é o mais diferente arquiteturalmente dos quatro: o
 transporte é **REST+JSON, não SOAP**, e não há divisão por UF — um único endpoint nacional (ADN)
 atende todos os municípios. O XML assinado da DPS (Declaração de Prestação de Serviços) é
 comprimido em gzip, codificado em Base64 e enviado dentro de um JSON; a resposta traz a NFS-e pelo
@@ -303,5 +315,6 @@ interna, e as peças de infraestrutura genéricas (`chave`, `assinatura`, `valid
 - [x] NFe — ciclo de vida pós-emissão (consulta/cancelamento/CC-e/inutilização)
 - [x] CTe — emissão (4.00)
 - [x] CTe — ciclo de vida pós-emissão (consulta/cancelamento/CC-e — inutilização descontinuada pela SEFAZ)
-- [ ] MDFe
+- [x] MDFe — emissão (3.00)
+- [x] MDFe — ciclo de vida pós-emissão (consulta/cancelamento/encerramento/inclusão de condutor — inutilização nunca existiu no padrão)
 - [ ] NFSe

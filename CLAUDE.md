@@ -11,7 +11,11 @@ Transporte Eletrônico) 4.00 emission was added alongside NFe as the library's s
 later joined by its post-emission lifecycle (see "## CTe (emissão + ciclo de vida pós-emissão)" below);
 the two share the same root infrastructure packages. NFS-e (Padrão Nacional / SEFIN Nacional) is the
 third document type (see "## NFS-e (Padrão Nacional)" below) and the architectural outlier: REST+JSON
-transport instead of SOAP, and a single national endpoint instead of per-UF ones.
+transport instead of SOAP, and a single national endpoint instead of per-UF ones. MDFe (Manifesto
+Eletrônico de Documentos Fiscais) 3.00 is the fourth document type (see "## MDFe (Padrão SOAP, 3.00) —
+emissão + ciclo de vida" below): architecturally it swings back toward NFe rather than CTe or NFS-e —
+SOAP over mutual TLS, per-UF/Ambiente endpoints, and NFe's lot+recibo emission flow (`MDFeRecepcao`/
+`MDFeRetRecepcao` polling), not CTe's synchronous one.
 
 ## Build & test
 
@@ -224,13 +228,86 @@ the last item, in `DpsXmlBuilder.java`). A future session must not treat these a
   left-zero-pad-to-14 convention are a best-effort placeholder, not confirmed against any official
   manual or the ACBr reference implementation.
 
+## MDFe (Padrão SOAP, 3.00) — emissão + ciclo de vida
+
+`net.accellog.sefaz4j.mdfe` is the fourth document type, and architecturally sits closer to NFe than
+to CTe or NFS-e: SOAP over mutual TLS, per-UF/Ambiente endpoints (`mdfe-servicos.ini`), and — unlike
+CTe's synchronous `CTeRecepcaoSinc` — a lot+recibo emission flow. `MDFeRecepcao` accepts the lot and
+may answer `cStat 103` ("em processamento"), in which case `Sefaz4jMDFe.emitir` polls
+`MDFeRetRecepcao` via `ReciboPoller`, exactly like `Sefaz4jNFe.emitir` does. This isn't a design
+choice made by this library — MDFe 3.00's own WSDL splits synchronous and asynchronous submission
+into two entirely separate services rather than exposing an `enviMDFe`-level `indSinc` switch, and
+this library implements only the asynchronous pair (`MDFeRecepcao`/`MDFeRetRecepcao`), confirmed
+against the ACBr reference implementation.
+
+**No inutilização for MDFe, and for a stronger reason than CTe's.** CTe's inutilização was merely
+*discontinued* for v4.00 (see the CTe section above); MDFe's inutilização **never existed in the
+standard at all** — confirmed by its total absence anywhere in the ACBr reference implementation, not
+just for one version. There is no `Sefaz4jMDFe.inutilizar` and none is planned.
+
+- **`Sefaz4jMDFe`** — the facade, with 6 methods:
+  - `emitir(Sefaz4jConfig config, TMDFe mdfe): ResultadoEmissao` — checks `infMDFe/ide/tpAmb` (when
+    present) against the configured `Ambiente`, throwing `IllegalArgumentException` early on a
+    mismatch (the same tpAmb-vs-Ambiente guard `Sefaz4jNFe`/`Sefaz4jCTe` already have); builds the
+    chave de acesso + `Document` via `MDFeXmlBuilder`, signs `infMDFe`, XSD-validates against
+    `mdfe_v3.00.xsd`, transmits to `MDFeRecepcao`, and polls `MDFeRetRecepcao` if the lot comes back
+    `103`.
+  - `enviarXmlAssinado(Sefaz4jConfig config, String xmlAssinado): ResultadoEmissao` — skips straight
+    to validate+transmit(+poll) for an already-signed MDF-e XML.
+  - `consultarSituacao(Sefaz4jConfig config, String chaveAcesso): ResultadoConsulta` — builds and
+    sends a `consSitMDFe` (validated against `consSitMDFe_v3.00.xsd`) to `MDFeConsultaProtocolo`, no
+    signing involved.
+  - `cancelar(Sefaz4jConfig config, String chaveAcesso, String nProt, String justificativa):
+    ResultadoEvento` — tpEvento `110111`; `nProt` must be exactly 15 numeric digits, `justificativa`
+    between 15 and 255 characters (same limits as NFe/CTe cancelamento).
+  - `encerrar(Sefaz4jConfig config, String chaveAcesso, String nProt, String cUFEnc, String cMunEnc,
+    String dtEnc): ResultadoEvento` — tpEvento `110112` (encerramento); requires `nProt` (15 digits)
+    plus the closing UF/município/date the manifest's travel actually ended at, since a manifest is
+    routinely closed somewhere other than where `infMDFe/ide` originally planned.
+  - `incluirCondutor(Sefaz4jConfig config, String chaveAcesso, String xNome, String cpf):
+    ResultadoEvento` — tpEvento `110114`; unlike `cancelar`/`encerrar`, takes **no `nProt`** —
+    `evIncCondutorMDFe`'s schema has no such field, because adding a driver mid-manifest isn't tied to
+    the original authorization protocol the way cancelling or closing the manifest is.
+  - All three event methods build the event via the shared `EventoMDFeXmlBuilder.montar(...)`, sign
+    `infEvento`, XSD-validate the event-specific fragment first (`evCancMDFe_v3.00.xsd`/
+    `evEncMDFe_v3.00.xsd`/`evIncCondutorMDFe_v3.00.xsd`) and then the assembled `eventoMDFe_v3.00.xsd`
+    document (the same two-pass validation convention already used for CTe/NFS-e events), then POST
+    to `RecepcaoEvento_3.00` — returning a `ResultadoEvento` whose `isOk()` is strict for `cStat 135`.
+- **Explicitly out of scope**, the same "Plano B" precedent already used for NFS-e's confirmação/
+  rejeição events:
+  - `MDFeConsultaMDFeNaoEnc` — an operational report ("which MDF-es for this CNPJ are still open"),
+    not a per-document operation, so it doesn't fit this library's chaveAcesso-scoped method shape.
+  - The four v3.00-only payment/GNRE events (`evConfirmaServMDFe`/`evPagtoOperMDFe`/
+    `evAlteracaoPagtoServMDFe`/`evInclusaoDFeMDFe`) — a separate payment-confirmation workflow, not
+    part of the core emissão/cancelamento/encerramento/condutor lifecycle this plan scoped.
+  - Fleet/manifest-registration services (`mdfeManCadTransp`/`Frota`) — pre-registering vehicles/
+    drivers with SEFAZ is a distinct concern from emitting and managing MDF-e documents themselves.
+  - `distMDFe` (document distribution/download) — a pull-style query for documents addressed to a
+    given CNPJ, not part of the emit-and-manage lifecycle this library covers.
+- **`net.accellog.sefaz4j.mdfe.Sefaz4jConfig`** — `UF`, `Ambiente`, PFX bytes + password, optional
+  `urlRecepcaoOverride` (constructor arg), fluent `setUrlRetRecepcaoOverride`/
+  `setUrlConsultaProtocoloOverride`/`setUrlRecepcaoEventoOverride`, and fluent
+  `setTimeout`/`setMaxTentativasPolling`/`setIntervaloPolling` (defaults: 30s, 5, 5s — same as NFe).
+  The override method names use MDFe's own WSDL vocabulary — "Recepção"/"RetRecepção" — rather than
+  NFe's "Autorização", because MDFe's actual services are never called `MDFeAutorizacao`.
+- **`net.accellog.sefaz4j.mdfe.ResultadoEmissao`/`ResultadoConsulta`/`ResultadoEvento`** — same shape
+  as NFe's: `isOk()` strict for the operation's specific success `cStat` (`100` for emissão/consulta,
+  `135` for any of the three events), `getCStat()`/`getXMotivo()` always populated;
+  `ResultadoEmissao`/`ResultadoConsulta` expose `getChMDFe()` (chave de acesso, MDFe's own naming, not
+  `getChNFe()`); `getXmlAutorizado()` wraps in `<mdfeProc>` when a `protMDFe` is present.
+- **Chave de acesso uses the shared `chave` package, unlike NFS-e.** `MDFeXmlBuilder` calls the same
+  root `net.accellog.sefaz4j.chave.ChaveAcessoCalculator` (mod-11) NFe/CTe use — there is no
+  `mdfe.chave` package — because MDFe's access key follows the same 44-digit DFe convention, unlike
+  NFS-e's unrelated, check-digit-less `infDPS/@Id` scheme.
+
 ## Package layout
 
-- `net.accellog.sefaz4j.nfe` / `net.accellog.sefaz4j.cte` / `net.accellog.sefaz4j.nfse` — the three
-  document-specific facades and their config/result types, described above. The shared infrastructure
-  packages below (`chave`, `assinatura`, `validacao`, `webservice`, `endpoints`) live at the root and
-  are used by all three (NFS-e's `chave` and event-XML logic is the exception — see the NFS-e section
-  above for why `DpsIdCalculator` lives under `nfse.chave` instead).
+- `net.accellog.sefaz4j.nfe` / `net.accellog.sefaz4j.cte` / `net.accellog.sefaz4j.nfse` /
+  `net.accellog.sefaz4j.mdfe` — the four document-specific facades and their config/result types,
+  described above. The shared infrastructure packages below (`chave`, `assinatura`, `validacao`,
+  `webservice`, `endpoints`) live at the root and are used by all four (NFS-e's `chave` and event-XML
+  logic is the exception — see the NFS-e section above for why `DpsIdCalculator` lives under
+  `nfse.chave` instead; MDFe follows NFe/CTe's convention and has no `chave` package of its own).
 - `net.accellog.sefaz4j.chave` (shared) — `ChaveAcessoCalculator`: builds the 44-digit chave de acesso (43 digits + check digit, mod-11).
 - `net.accellog.sefaz4j.nfe.xml` — `NFeXmlBuilder`: marshals a `TNFe` (JAXB) into a DOM `Document`, injecting `infNFe/@Id` and `ide/cDV`
   from the computed chave when absent.
@@ -238,7 +315,11 @@ the last item, in `DpsXmlBuilder.java`). A future session must not treat these a
 - `net.accellog.sefaz4j.assinatura` (shared) — `AssinadorXml` (Apache Santuario XML signature), `CertificadoA1` (PKCS12 loading),
   `CertificadoException`.
 - `net.accellog.sefaz4j.validacao` (shared) — `ValidadorXsd`: validates a serialized XML string against the bundled `nfe_v4.00.xsd`/
-  `cte_v4.00.xsd`/`DPS_v1.01.xsd`/`evento_v1.01.xsd`/`pedRegEvento_v1.01.xsd` chains (root XSD path is a parameter); `ValidacaoXsdException`.
+  `cte_v4.00.xsd`/`DPS_v1.01.xsd`/`evento_v1.01.xsd`/`pedRegEvento_v1.01.xsd`/`mdfe_v3.00.xsd`/
+  `consSitMDFe_v3.00.xsd`/`evCancMDFe_v3.00.xsd`/`evEncMDFe_v3.00.xsd`/`evIncCondutorMDFe_v3.00.xsd`/
+  `eventoMDFe_v3.00.xsd` chains (root XSD path is a parameter); `ValidacaoXsdException`. Also carries
+  a static initializer raising `jdk.xml.maxOccurLimit` (see "Key technical facts" below) needed only
+  by the MDFe schema chain.
 - `net.accellog.sefaz4j.webservice` (shared) — `SefazHttpClient` (mutual-TLS `java.net.http.HttpClient`, with per-certificate
   `SSLContext`/`HttpClient` caching), `RespostaSefazParser`, `RespostaSefaz`, `ComunicacaoException`.
 - `net.accellog.sefaz4j.nfe.webservice` — `SoapEnvelopeBuilder`, `ReciboPoller` (polls `NFeRetAutorizacao4` while `cStat == 103`);
@@ -247,15 +328,19 @@ the last item, in `DpsXmlBuilder.java`). A future session must not treat these a
   `envelopeConsultaSituacao(String)`/`envelopeRecepcaoEvento(String)`; CTe-specific, not shared
   (no `ReciboPoller` equivalent — see the CTe section above).
 - `net.accellog.sefaz4j.endpoints` (shared) — `EndpointResolver` + `UF`/`Ambiente`, backed by `src/main/resources/endpoints/nfe-servicos.ini`
-  (NFe) and `cte-servicos.ini` (CTe), selected via a path/section-prefix argument to `EndpointResolver.resolver(...)`.
-  NFS-e reuses only the `Ambiente` enum from here (no `UF`, no ini file): its single national URLs are
-  hardcoded constants in `Sefaz4jNFSe` (`URL_PRODUCAO`/`URL_HOMOLOGACAO`), never routed through
-  `EndpointResolver`.
+  (NFe), `cte-servicos.ini` (CTe), and `mdfe-servicos.ini` (MDFe), selected via a path/section-prefix
+  argument to `EndpointResolver.resolver(...)`. NFS-e reuses only the `Ambiente` enum from here (no
+  `UF`, no ini file): its single national URLs are hardcoded constants in `Sefaz4jNFSe`
+  (`URL_PRODUCAO`/`URL_HOMOLOGACAO`), never routed through `EndpointResolver`.
 - `net.accellog.sefaz4j.nfe.endpoints` — `Servico`; NFe-specific, not shared.
 - `net.accellog.sefaz4j.cte.endpoints` — `Servico` (`CTE_RECEPCAO_SINC`/`CTE_CONSULTA_PROTOCOLO`/
   `CTE_RECEPCAO_EVENTO`); CTe-specific, not shared.
+- `net.accellog.sefaz4j.mdfe.endpoints` — `Servico` (`MDFE_RECEPCAO`/`MDFE_RET_RECEPCAO`/
+  `MDFE_CONSULTA_PROTOCOLO`/`RECEPCAO_EVENTO`); MDFe-specific, not shared.
 - `net.accellog.sefaz4j.nfe.model` — **generated** JAXB classes (`TNFe`, `ObjectFactory`, etc.) — do not hand-edit, see below.
 - `net.accellog.sefaz4j.cte.model` — **generated** JAXB classes (`TCTe`, `ObjectFactory`, etc.), from `cte_v4.00.xsd` — do not hand-edit.
+- `net.accellog.sefaz4j.mdfe.model` — **generated** JAXB classes (`TMDFe`, `ObjectFactory`, etc.), from
+  `mdfe_v3.00.xsd` — do not hand-edit.
 - `net.accellog.sefaz4j.nfse.chave` — `DpsIdCalculator`: pure-concatenation `infDPS/@Id` builder, NOT
   shared with NFe/CTe's `chave` package (different algorithm, no check digit).
 - `net.accellog.sefaz4j.nfse.xml` — `DpsXmlBuilder` (mirrors `NFeXmlBuilder`/`CTeXmlBuilder`: marshals
@@ -267,6 +352,15 @@ the last item, in `DpsXmlBuilder.java`). A future session must not treat these a
   there's no SOAP).
 - `net.accellog.sefaz4j.nfse.model` — **generated** JAXB classes (`TCDPS`, `ObjectFactory`, etc.), from
   `DPS_v1.01.xsd` — do not hand-edit.
+- `net.accellog.sefaz4j.mdfe.xml` — `MDFeXmlBuilder` (mirrors `NFeXmlBuilder`/`CTeXmlBuilder`: marshals
+  `TMDFe` to DOM via JAXB, injecting `infMDFe/@Id` and `ide/cDV` from the computed chave when absent)
+  and `EventoMDFeXmlBuilder` (builds the `eventoMDFe`/`infEvento` event structure by string
+  concatenation — no JAXB — reusing NFe's `Id` format `"ID" + tpEvento + chave + nSeqEvento` padded to
+  2 digits, unlike CTe's 3-digit padding).
+- `net.accellog.sefaz4j.mdfe.webservice` — `SoapEnvelopeBuilder` (`envelopeRecepcao`/
+  `envelopeRetRecepcao`/`envelopeConsultaSituacao`/`envelopeRecepcaoEvento`) and `ReciboPoller` (polls
+  `MDFeRetRecepcao` while `cStat == 103`, the same role NFe's `ReciboPoller` has); MDFe-specific, not
+  shared.
 
 ## Key technical facts for future sessions
 
@@ -313,6 +407,32 @@ the last item, in `DpsXmlBuilder.java`). A future session must not treat these a
   após o `simpleType` `TVerEvento`); a versão de referência original, com o defeito, continua em
   `Schemas/NFe/leiauteCCe_v1.00.xsd`, fora do controle de versão — não copie esse arquivo de volta
   por cima do bundled.
+- **`src/main/resources/schemas/mdfe/consReciMDFeTiposBasico_v3.00.xsd` difere deliberadamente do
+  arquivo oficial da SEFAZ**: o arquivo oficial redefine ali o `xs:complexType` `TProtMDFe`, já
+  definido em `mdfeTiposBasico_v3.00.xsd` (incluído por `tiposGeralMDFe_v3.00.xsd`) — um defeito de
+  autoria genuíno da mesma categoria do já documentado acima para `leiauteCCe_v1.00.xsd`
+  (`TCOrgaoIBGE` duplicado), que o `SchemaFactory`/validador XSD do Java rejeita com
+  `sch-props-correct.2` (tipo duplicado no mesmo namespace). O bloco duplicado foi removido desta
+  cópia bundled; para que `TRetConsReciMDFe.protMDFe` continue resolvendo `TProtMDFe` quando este
+  arquivo é validado isoladamente (o XJC valida cada `schemaInclude` por si, não só o modelo
+  combinado), um `<xs:include>` para `mdfeTiposBasico_v3.00.xsd` foi acrescentado no lugar do bloco
+  removido — inofensivo, já que os outros `schemaInclude`s da mesma execução `xjc-mdfe` já o incluem,
+  e o include duplicado de `tiposGeralMDFe_v3.00.xsd` que isso implica é idempotente (mesmo arquivo).
+  A versão de referência original, com o defeito, continua em
+  `Schemas/MDFe/consReciMDFeTiposBasico_v3.00.xsd`, fora do controle de versão — não copie esse
+  arquivo de volta por cima do bundled.
+- **`mdfeTiposBasico_v3.00.xsd`'s `infDoc/infMunDescarga/infCTe` declares `maxOccurs="20000"`**, above
+  the JDK's default `jdk.xml.maxOccurLimit=5000` guard on *compiling* a schema (unrelated to
+  validating an XML instance against it — this only governs how large a `maxOccurs` the schema
+  document itself may declare). Without raising this, `SchemaFactory.newSchema(...)` throws on the
+  very first MDF-e validation call in any downstream JVM that hasn't separately raised the limit via
+  a launch flag — which a library consumer has no reason to know it needs to do. Two things fix this
+  for the two places that compile this schema: `.mvn/jvm.config` sets `-Djdk.xml.maxOccurLimit=0` for
+  Maven's own JVM (covering `generate-sources`/JAXB codegen and `mvn test`), and `ValidadorXsd` itself
+  carries a static initializer that sets the same system property at runtime
+  (`System.setProperty("jdk.xml.maxOccurLimit", "0")`, only if not already set, so an explicit
+  caller-provided `-D` value is never silently overridden) — making `ValidadorXsd` self-contained
+  regardless of the consuming application's own JVM flags.
 
 ## Release / CI
 
