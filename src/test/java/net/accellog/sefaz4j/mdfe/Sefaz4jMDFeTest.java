@@ -25,6 +25,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -407,6 +408,97 @@ public class Sefaz4jMDFeTest {
         Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
 
         Sefaz4jMDFe.consultarSituacao(config, "chave-invalida");
+    }
+
+    @Test
+    public void cancelarRetornaEventoRegistrado() {
+        AtomicReference<String> corpoCapturado = new AtomicReference<>();
+        servidor.createContext("/evento-cancelamento", exchange -> {
+            String corpoRecebido = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            corpoCapturado.set(corpoRecebido);
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><mdfeResultMsg xmlns=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeRecepcaoEvento\">" +
+                "<retEventoMDFe xmlns=\"http://www.portalfiscal.inf.br/mdfe\" versao=\"3.00\"><infEvento>" +
+                "<tpAmb>2</tpAmb><verAplic>RS_1.0.0</verAplic><cOrgao>35</cOrgao>" +
+                "<cStat>135</cStat><xMotivo>Evento registrado e vinculado ao MDF-e</xMotivo>" +
+                "<chMDFe>35250812345678000195580010000001231123456789</chMDFe>" +
+                "<tpEvento>110111</tpEvento><xEvento>Cancelamento</xEvento><nSeqEvento>1</nSeqEvento>" +
+                "<dhRegEvento>2025-08-12T10:11:00-03:00</dhRegEvento>" +
+                "<nProt>135250000000002</nProt>" +
+                "</infEvento></retEventoMDFe>" +
+                "</mdfeResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+        config.setUrlRecepcaoEventoOverride("https://localhost:" + servidor.getAddress().getPort() + "/evento-cancelamento");
+
+        ResultadoEvento resultado = Sefaz4jMDFe.cancelar(
+            config,
+            "35250812345678000195580010000001231123456789",
+            "135250000000001",
+            "Justificativa de teste com quinze ou mais caracteres"
+        );
+
+        assertTrue(resultado.isOk());
+        assertEquals("135", resultado.getCStat());
+        assertEquals("135250000000002", resultado.getNProt());
+        assertTrue(corpoCapturado.get().contains("<tpEvento>110111</tpEvento>"));
+        assertTrue(corpoCapturado.get().contains("versaoEvento=\"3.00\""));
+    }
+
+    @Test
+    public void cancelarRetornaRejeitadoQuandoEventoNaoERegistrado() {
+        servidor.createContext("/evento-cancelamento-rejeitado", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><mdfeResultMsg xmlns=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeRecepcaoEvento\">" +
+                "<retEventoMDFe xmlns=\"http://www.portalfiscal.inf.br/mdfe\" versao=\"3.00\"><infEvento>" +
+                "<tpAmb>2</tpAmb><verAplic>RS_1.0.0</verAplic><cOrgao>35</cOrgao>" +
+                "<cStat>573</cStat><xMotivo>Duplicidade de evento</xMotivo>" +
+                "</infEvento></retEventoMDFe></mdfeResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+        config.setUrlRecepcaoEventoOverride("https://localhost:" + servidor.getAddress().getPort() + "/evento-cancelamento-rejeitado");
+
+        ResultadoEvento resultado = Sefaz4jMDFe.cancelar(
+            config,
+            "35250812345678000195580010000001231123456789",
+            "135250000000001",
+            "Justificativa de teste com quinze ou mais caracteres"
+        );
+
+        assertFalse(resultado.isOk());
+        assertEquals("573", resultado.getCStat());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void cancelarRejeitaJustificativaCurta() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jMDFe.cancelar(
+            config,
+            "35250812345678000195580010000001231123456789",
+            "135250000000001",
+            "curta"
+        );
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void cancelarRejeitaChaveAcessoInvalida() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jMDFe.cancelar(
+            config,
+            "chave-invalida",
+            "135250000000001",
+            "Justificativa de teste com quinze ou mais caracteres"
+        );
     }
 
     private static String xmlMdfeAssinadoValido() {

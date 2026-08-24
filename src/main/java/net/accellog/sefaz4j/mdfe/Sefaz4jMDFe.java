@@ -6,6 +6,7 @@ import net.accellog.sefaz4j.mdfe.endpoints.Servico;
 import net.accellog.sefaz4j.mdfe.model.TMDFe;
 import net.accellog.sefaz4j.mdfe.webservice.ReciboPoller;
 import net.accellog.sefaz4j.mdfe.webservice.SoapEnvelopeBuilder;
+import net.accellog.sefaz4j.mdfe.xml.EventoMDFeXmlBuilder;
 import net.accellog.sefaz4j.mdfe.xml.MDFeXmlBuilder;
 import net.accellog.sefaz4j.validacao.ValidadorXsd;
 import net.accellog.sefaz4j.webservice.ComunicacaoException;
@@ -41,6 +42,8 @@ public final class Sefaz4jMDFe {
     static final String MDFE_SERVICOS_INI = "/endpoints/mdfe-servicos.ini";
     static final String PREFIXO_SECAO_MDFE = "MDFE_";
     static final String MDFE_VERSAO = "3.00";
+    private static final int TAMANHO_MINIMO_JUSTIFICATIVA = 15;
+    private static final int TAMANHO_MAXIMO_JUSTIFICATIVA = 255;
 
     private Sefaz4jMDFe() {
     }
@@ -207,6 +210,76 @@ public final class Sefaz4jMDFe {
             resposta.getChaveDocumento(),
             resposta.getProtocoloXml()
         );
+    }
+
+    public static ResultadoEvento cancelar(Sefaz4jConfig config, String chaveAcesso, String nProt, String justificativa) {
+        exigirChaveAcessoValida(chaveAcesso);
+        exigirTamanho(justificativa, TAMANHO_MINIMO_JUSTIFICATIVA, TAMANHO_MAXIMO_JUSTIFICATIVA, "justificativa do cancelamento");
+        if (nProt == null || !nProt.matches("[0-9]{15}")) {
+            throw new IllegalArgumentException("O campo 'nProt' deve ter exatamente 15 dígitos numéricos, obteve: '" + nProt + "'");
+        }
+
+        String cUF = chaveAcesso.substring(0, 2);
+        String cnpj = chaveAcesso.substring(6, 20);
+
+        String evCancMDFeFragmento = "<evCancMDFe xmlns=\"" + MDFE_NAMESPACE + "\">" +
+            "<descEvento>Cancelamento</descEvento>" +
+            "<nProt>" + nProt + "</nProt>" +
+            "<xJust>" + escaparTextoXml(justificativa) + "</xJust>" +
+            "</evCancMDFe>";
+        ValidadorXsd.validar(evCancMDFeFragmento, "/schemas/mdfe/evCancMDFe_v3.00.xsd");
+
+        String detEvento = "<detEvento versaoEvento=\"" + MDFE_VERSAO + "\">" + evCancMDFeFragmento + "</detEvento>";
+
+        Document documento = EventoMDFeXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110111", 1, MDFE_VERSAO, detEvento);
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), MDFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
+        String xmlEventoAssinado = serializarDocumento(documento);
+
+        return enviarEProcessarEvento(config, xmlEventoAssinado);
+    }
+
+    private static ResultadoEvento enviarEProcessarEvento(Sefaz4jConfig config, String xmlEventoAssinado) {
+        ValidadorXsd.validar(xmlEventoAssinado, "/schemas/mdfe/eventoMDFe_v3.00.xsd");
+
+        String url = config.getUrlRecepcaoEventoOverride() != null
+            ? config.getUrlRecepcaoEventoOverride()
+            : EndpointResolver.resolver(MDFE_SERVICOS_INI, PREFIXO_SECAO_MDFE, config.getUf(), config.getAmbiente(), Servico.RECEPCAO_EVENTO.getChaveIni());
+
+        String envelope = SoapEnvelopeBuilder.envelopeRecepcaoEvento(xmlEventoAssinado);
+        String respostaBruta = SefazHttpClient.postar(
+            url,
+            "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeRecepcaoEvento/mdfeRecepcaoEvento\"",
+            envelope,
+            config.getPfxBytes(),
+            config.getSenhaPfx(),
+            config.getTimeout()
+        );
+
+        RespostaSefaz resposta = RespostaSefazParser.parsear(respostaBruta, "retEventoMDFe");
+
+        String protocoloXml = resposta.getProtocoloXml();
+        String cStatFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "cStat") : resposta.getCStat();
+        String xMotivoFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "xMotivo") : resposta.getXMotivo();
+        String nProtFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "nProt") : null;
+
+        return new ResultadoEvento("135".equals(cStatFinal), cStatFinal, xMotivoFinal, nProtFinal, protocoloXml);
+    }
+
+    private static void exigirTamanho(String texto, int tamanhoMinimo, int tamanhoMaximo, String nomeCampo) {
+        if (texto == null || texto.length() < tamanhoMinimo || texto.length() > tamanhoMaximo) {
+            throw new IllegalArgumentException(
+                "O campo '" + nomeCampo + "' deve ter entre " + tamanhoMinimo + " e " + tamanhoMaximo + " caracteres"
+            );
+        }
+    }
+
+    private static String escaparTextoXml(String texto) {
+        return texto
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&apos;");
     }
 
     private static void exigirChaveAcessoValida(String chaveAcesso) {
