@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- edited with XMLSpy v2008 (http://www.altova.com) by sas-softwares@procergs.rs.gov.br (PROCERGS) -->
+<xs:schema xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns="http://www.portalfiscal.inf.br/mdfe" targetNamespace="http://www.portalfiscal.inf.br/mdfe" elementFormDefault="qualified" attributeFormDefault="unqualified">
+	<xs:import namespace="http://www.w3.org/2000/09/xmldsig#" schemaLocation="xmldsig-core-schema_v1.01.xsd"/>
+	<xs:include schemaLocation="tiposGeralMDFe_v3.00.xsd"/>
+	<!-- O arquivo oficial da SEFAZ redefine aqui o xs:complexType "TProtMDFe" (era um segundo
+	     bloco completo, idêntico ao de mdfeTiposBasico_v3.00.xsd exceto pelo tipo do atributo
+	     "versao" — TVerConsReciMDFe aqui vs. TVerMDe lá, ambos restritos ao mesmo valor
+	     "3.00") — um defeito de autoria genuíno do arquivo oficial, mesma categoria do já
+	     documentado para schemas/cte/leiauteCCe_v1.00.xsd (TCOrgaoIBGE duplicado). O bloco
+	     duplicado foi removido desta cópia bundled; para que TRetConsReciMDFe.protMDFe (mais
+	     abaixo) continue resolvendo "TProtMDFe" quando este arquivo é validado isoladamente
+	     (SchemaConstraintChecker do XJC valida cada schemaInclude por si, não só o modelo XJC
+	     combinado), este include para mdfeTiposBasico_v3.00.xsd foi acrescentado — inofensivo,
+	     já que mdfe_v3.00.xsd/enviMDFe_v3.00.xsd/retEnviMDFe_v3.00.xsd (os outros
+	     schemaIncludes do mesmo xjc-mdfe) já o incluem, e o include duplicado de
+	     tiposGeralMDFe_v3.00.xsd que isso implica é idempotente (mesmo arquivo). A versão de
+	     referência original, com o defeito, permanece em
+	     Schemas/MDFe/consReciMDFeTiposBasico_v3.00.xsd, fora do controle de versão — não copie
+	     esse arquivo de volta por cima deste. -->
+	<xs:include schemaLocation="mdfeTiposBasico_v3.00.xsd"/>
+	<xs:complexType name="TConsReciMDFe">
+		<xs:annotation>
+			<xs:documentation>Tipo Pedido de Consulta do Recibo do MDF-e</xs:documentation>
+		</xs:annotation>
+		<xs:sequence>
+			<xs:element name="tpAmb" type="TAmb">
+				<xs:annotation>
+					<xs:documentation>Identificação do Ambiente:
+1 - Produção
+2 - Homologação</xs:documentation>
+				</xs:annotation>
+			</xs:element>
+			<xs:element name="nRec" type="TRec">
+				<xs:annotation>
+					<xs:documentation>Número do Recibo do arquivo a ser consultado</xs:documentation>
+				</xs:annotation>
+			</xs:element>
+		</xs:sequence>
+		<xs:attribute name="versao" type="TVerConsReciMDFe" use="required"/>
+	</xs:complexType>
+	<xs:complexType name="TRetConsReciMDFe">
+		<xs:annotation>
+			<xs:documentation>Tipo Retorno do Pedido de  Consulta do Recibo do MDF-e</xs:documentation>
+		</xs:annotation>
+		<xs:sequence>
+			<xs:element name="tpAmb" type="TAmb">
+				<xs:annotation>
+					<xs:documentation>Identificação do Ambiente:
+1 - Produção
+2 - Homologação</xs:documentation>
+				</xs:annotation>
+			</xs:element>
+			<xs:element name="verAplic" type="TVerAplic">
+				<xs:annotation>
+					<xs:documentation>Versão do Aplicativo que processou o MDF-e</xs:documentation>
+				</xs:annotation>
+			</xs:element>
+			<xs:element name="nRec" type="TRec">
+				<xs:annotation>
+					<xs:documentation>Número do Recibo Consultado</xs:documentation>
+				</xs:annotation>
+			</xs:element>
+			<xs:element name="cStat" type="TStat">
+				<xs:annotation>
+					<xs:documentation>código do status do retorno da consulta.</xs:documentation>
+				</xs:annotation>
+			</xs:element>
+			<xs:element name="xMotivo" type="TMotivo">
+				<xs:annotation>
+					<xs:documentation>Descrição literal do status do do retorno da consulta.</xs:documentation>
+				</xs:annotation>
+			</xs:element>
+			<xs:element name="cUF" type="TCodUfIBGE">
+				<xs:annotation>
+					<xs:documentation>Idntificação da UF</xs:documentation>
+				</xs:annotation>
+			</xs:element>
+			<xs:element name="protMDFe" type="TProtMDFe" minOccurs="0">
+				<xs:annotation>
+					<xs:documentation>Resultado do processamento do MDF-e</xs:documentation>
+				</xs:annotation>
+			</xs:element>
+		</xs:sequence>
+		<xs:attribute name="versao" type="TVerConsReciMDFe" use="required"/>
+	</xs:complexType>
+	<xs:simpleType name="TVerConsReciMDFe">
+		<xs:annotation>
+			<xs:documentation> Tipo Versão do Consulta de MDF-e - 3.00</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="xs:string">
+			<xs:whiteSpace value="preserve"/>
+			<xs:pattern value="3\.00"/>
+		</xs:restriction>
+	</xs:simpleType>
+</xs:schema>

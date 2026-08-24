@@ -109,6 +109,23 @@
 				</dependencies>
 				<executions>
 					<execution>
+						<id>xjc-mdfe</id>
+						<goals>
+							<goal>generate</goal>
+						</goals>
+						<configuration>
+							<schemaDirectory>src/main/resources/schemas/mdfe</schemaDirectory>
+							<schemaIncludes>
+								<schemaInclude>mdfe_v3.00.xsd</schemaInclude>
+								<schemaInclude>enviMDFe_v3.00.xsd</schemaInclude>
+								<schemaInclude>retEnviMDFe_v3.00.xsd</schemaInclude>
+								<schemaInclude>consReciMDFe_v3.00.xsd</schemaInclude>
+								<schemaInclude>retConsReciMDFe_v3.00.xsd</schemaInclude>
+							</schemaIncludes>
+							<generatePackage>net.accellog.sefaz4j.mdfe.model</generatePackage>
+						</configuration>
+					</execution>
+					<execution>
 						<id>xjc-nfe</id>
 						<goals>
 							<goal>generate</goal>
