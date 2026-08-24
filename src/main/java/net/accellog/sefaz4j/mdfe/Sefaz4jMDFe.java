@@ -173,6 +173,50 @@ public final class Sefaz4jMDFe {
         return dbf.newDocumentBuilder();
     }
 
+    public static ResultadoConsulta consultarSituacao(Sefaz4jConfig config, String chaveAcesso) {
+        exigirChaveAcessoValida(chaveAcesso);
+
+        String xmlConsulta = "<consSitMDFe xmlns=\"" + MDFE_NAMESPACE + "\" versao=\"" + MDFE_VERSAO + "\">" +
+            "<tpAmb>" + config.getAmbiente().getTpAmb() + "</tpAmb>" +
+            "<xServ>CONSULTAR</xServ>" +
+            "<chMDFe>" + chaveAcesso + "</chMDFe>" +
+            "</consSitMDFe>";
+
+        ValidadorXsd.validar(xmlConsulta, "/schemas/mdfe/consSitMDFe_v3.00.xsd");
+
+        String url = config.getUrlConsultaProtocoloOverride() != null
+            ? config.getUrlConsultaProtocoloOverride()
+            : EndpointResolver.resolver(MDFE_SERVICOS_INI, PREFIXO_SECAO_MDFE, config.getUf(), config.getAmbiente(), Servico.MDFE_CONSULTA_PROTOCOLO.getChaveIni());
+
+        String envelope = SoapEnvelopeBuilder.envelopeConsultaSituacao(xmlConsulta);
+        String respostaBruta = SefazHttpClient.postar(
+            url,
+            "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeConsulta/mdfeConsultaMDF\"",
+            envelope,
+            config.getPfxBytes(),
+            config.getSenhaPfx(),
+            config.getTimeout()
+        );
+
+        RespostaSefaz resposta = RespostaSefazParser.parsear(respostaBruta, "protMDFe", "chMDFe");
+
+        return new ResultadoConsulta(
+            "100".equals(resposta.getCStat()),
+            resposta.getCStat(),
+            resposta.getXMotivo(),
+            resposta.getChaveDocumento(),
+            resposta.getProtocoloXml()
+        );
+    }
+
+    private static void exigirChaveAcessoValida(String chaveAcesso) {
+        if (chaveAcesso == null || !chaveAcesso.matches("[0-9]{44}")) {
+            throw new IllegalArgumentException(
+                "O campo 'chaveAcesso' deve ter exatamente 44 dígitos numéricos, obteve: '" + chaveAcesso + "'"
+            );
+        }
+    }
+
     private static String serializar(Document documento) throws Exception {
         Transformer transformer = TransformerFactory.newInstance().newTransformer();
         transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes");

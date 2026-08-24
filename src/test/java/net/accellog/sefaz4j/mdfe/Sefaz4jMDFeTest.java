@@ -345,6 +345,70 @@ public class Sefaz4jMDFeTest {
      * em {@code TMDFe} (sem minOccurs="0"), então o XSD exige o elemento, mas
      * {@code enviarXmlAssinado} só valida contra o XSD e transmite — não verifica a assinatura.
      */
+    @Test
+    public void consultarSituacaoRetornaAutorizada() {
+        servidor.createContext("/consulta", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><mdfeResultMsg xmlns=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeConsulta\">" +
+                "<retConsSitMDFe xmlns=\"http://www.portalfiscal.inf.br/mdfe\" versao=\"3.00\">" +
+                "<tpAmb>2</tpAmb><verAplic>RS_1.0.0</verAplic>" +
+                "<cStat>100</cStat><xMotivo>Autorizado o uso do MDF-e</xMotivo>" +
+                "<cUF>35</cUF>" +
+                "<protMDFe versao=\"3.00\"><infProt>" +
+                "<tpAmb>2</tpAmb><verAplic>RS_1.0.0</verAplic>" +
+                "<chMDFe>35250812345678000195580010000001231123456789</chMDFe>" +
+                "<dhRecbto>2025-08-12T10:05:00-03:00</dhRecbto>" +
+                "<nProt>135250000000001</nProt>" +
+                "<cStat>100</cStat><xMotivo>Autorizado o uso do MDF-e</xMotivo>" +
+                "</infProt></protMDFe>" +
+                "</retConsSitMDFe></mdfeResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+        config.setUrlConsultaProtocoloOverride("https://localhost:" + servidor.getAddress().getPort() + "/consulta");
+
+        ResultadoConsulta resultado = Sefaz4jMDFe.consultarSituacao(config, "35250812345678000195580010000001231123456789");
+
+        assertTrue(resultado.isOk());
+        assertEquals("100", resultado.getCStat());
+        assertEquals("35250812345678000195580010000001231123456789", resultado.getChMDFe());
+        assertTrue(resultado.getProtocoloXml().contains("<nProt>135250000000001</nProt>"));
+    }
+
+    @Test
+    public void consultarSituacaoRetornaNaoAutorizadaSemLancarExcecao() {
+        servidor.createContext("/consulta-inexistente", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><mdfeResultMsg xmlns=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeConsulta\">" +
+                "<retConsSitMDFe xmlns=\"http://www.portalfiscal.inf.br/mdfe\" versao=\"3.00\">" +
+                "<tpAmb>2</tpAmb><verAplic>RS_1.0.0</verAplic>" +
+                "<cStat>656</cStat><xMotivo>Consulta a MDF-e não permitida para o Ambiente de Produção</xMotivo>" +
+                "<cUF>35</cUF>" +
+                "</retConsSitMDFe></mdfeResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+        config.setUrlConsultaProtocoloOverride("https://localhost:" + servidor.getAddress().getPort() + "/consulta-inexistente");
+
+        ResultadoConsulta resultado = Sefaz4jMDFe.consultarSituacao(config, "35250812345678000195580010000001231123456789");
+
+        assertFalse(resultado.isOk());
+        assertEquals("656", resultado.getCStat());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void consultarSituacaoRejeitaChaveAcessoInvalida() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jMDFe.consultarSituacao(config, "chave-invalida");
+    }
+
     private static String xmlMdfeAssinadoValido() {
         return "<MDFe xmlns=\"http://www.portalfiscal.inf.br/mdfe\">" +
             "<infMDFe Id=\"MDFe35250812345678000195580010000001231123456789\" versao=\"3.00\">" +
