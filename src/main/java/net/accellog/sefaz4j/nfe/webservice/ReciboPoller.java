@@ -43,7 +43,7 @@ public final class ReciboPoller {
             String envelope = SoapEnvelopeBuilder.envelopeRetAutorizacao(nRec, tpAmb);
             String resposta = SefazHttpClient.postar(
                 urlRetAutorizacao,
-                "http://www.portalfiscal.inf.br/nfe/wsdl/NFeRetAutorizacao4/nfeRetAutorizacaoLote",
+                "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/nfe/wsdl/NFeRetAutorizacao4/nfeRetAutorizacaoLote\"",
                 envelope,
                 pfxBytes,
                 senha,

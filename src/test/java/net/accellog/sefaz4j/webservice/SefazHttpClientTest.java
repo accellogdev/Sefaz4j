@@ -103,7 +103,7 @@ public class SefazHttpClientTest {
     public void postaEnvelopeERecebeResposta() {
         String resposta = SefazHttpClient.postar(
             "https://localhost:" + porta + "/echo",
-            "qualquer-action",
+            "application/soap+xml; charset=utf-8; action=\"qualquer-action\"",
             "<envelope/>",
             pfxBytes,
             "teste123",
@@ -116,7 +116,7 @@ public class SefazHttpClientTest {
     public void lancaComunicacaoExceptionParaHostInexistente() {
         SefazHttpClient.postar(
             "https://host-que-nao-existe.invalid/echo",
-            "qualquer-action",
+            "application/soap+xml; charset=utf-8; action=\"qualquer-action\"",
             "<envelope/>",
             pfxBytes,
             "teste123",

@@ -34,8 +34,8 @@ public final class SefazHttpClient {
 
     public static String postar(
         String url,
-        String soapAction,
-        String envelopeXml,
+        String contentType,
+        String corpo,
         byte[] pfxBytes,
         String senha,
         Duration timeout
@@ -57,8 +57,8 @@ public final class SefazHttpClient {
             HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .timeout(timeout)
-                .header("Content-Type", "application/soap+xml; charset=utf-8; action=\"" + soapAction + "\"")
-                .POST(HttpRequest.BodyPublishers.ofString(envelopeXml))
+                .header("Content-Type", contentType)
+                .POST(HttpRequest.BodyPublishers.ofString(corpo))
                 .build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());

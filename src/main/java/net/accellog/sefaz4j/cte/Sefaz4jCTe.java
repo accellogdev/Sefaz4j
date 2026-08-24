@@ -40,8 +40,8 @@ public final class Sefaz4jCTe {
     private static final String EVENTO_CTE_XSD = "/schemas/cte/eventoCTe_v4.00.xsd";
     private static final String EV_CANC_CTE_XSD = "/schemas/cte/evCancCTe_v4.00.xsd";
     private static final String EV_CCE_CTE_XSD = "/schemas/cte/evCCeCTe_v4.00.xsd";
-    private static final String SOAP_ACTION_CONSULTA = "http://www.portalfiscal.inf.br/cte/wsdl/CTeConsultaV4/cteConsultaCT";
-    private static final String SOAP_ACTION_RECEPCAO_EVENTO = "http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoEventoV4/cteRecepcaoEvento";
+    private static final String CONTENT_TYPE_CONSULTA = "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/cte/wsdl/CTeConsultaV4/cteConsultaCT\"";
+    private static final String CONTENT_TYPE_RECEPCAO_EVENTO = "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoEventoV4/cteRecepcaoEvento\"";
 
     private static final String X_COND_USO_CCE_CTE =
         "A Carta de Correção é disciplinada pelo Art. 58-B do CONVÊNIO/SINIEF 06/89: Fica permitida a " +
@@ -94,7 +94,7 @@ public final class Sefaz4jCTe {
         String envelope = SoapEnvelopeBuilder.envelopeConsultaSituacao(xmlConsulta);
         String respostaBruta = SefazHttpClient.postar(
             url,
-            SOAP_ACTION_CONSULTA,
+            CONTENT_TYPE_CONSULTA,
             envelope,
             config.getPfxBytes(),
             config.getSenhaPfx(),
@@ -235,7 +235,7 @@ public final class Sefaz4jCTe {
         String envelope = SoapEnvelopeBuilder.envelopeRecepcaoSinc(xmlAssinado);
         String respostaBruta = SefazHttpClient.postar(
             url,
-            "http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoSincV4/cteRecepcao",
+            "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoSincV4/cteRecepcao\"",
             envelope,
             config.getPfxBytes(),
             config.getSenhaPfx(),
@@ -270,7 +270,7 @@ public final class Sefaz4jCTe {
         String envelope = SoapEnvelopeBuilder.envelopeRecepcaoEvento(xmlEventoAssinado);
         String respostaBruta = SefazHttpClient.postar(
             url,
-            SOAP_ACTION_RECEPCAO_EVENTO,
+            CONTENT_TYPE_RECEPCAO_EVENTO,
             envelope,
             config.getPfxBytes(),
             config.getSenhaPfx(),

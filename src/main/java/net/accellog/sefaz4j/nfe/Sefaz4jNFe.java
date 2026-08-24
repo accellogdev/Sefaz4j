@@ -131,7 +131,7 @@ public final class Sefaz4jNFe {
         String envelope = SoapEnvelopeBuilder.envelopeConsultaSituacao(xmlConsulta);
         String respostaBruta = SefazHttpClient.postar(
             url,
-            "http://www.portalfiscal.inf.br/nfe/wsdl/NFeConsultaProtocolo4/nfeConsultaNF",
+            "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/nfe/wsdl/NFeConsultaProtocolo4/nfeConsultaNF\"",
             envelope,
             config.getPfxBytes(),
             config.getSenhaPfx(),
@@ -262,7 +262,7 @@ public final class Sefaz4jNFe {
         String envelope = SoapEnvelopeBuilder.envelopeInutilizacao(xmlAssinado);
         String respostaBruta = SefazHttpClient.postar(
             url,
-            "http://www.portalfiscal.inf.br/nfe/wsdl/NFeInutilizacao4/nfeInutilizacaoNF",
+            "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/nfe/wsdl/NFeInutilizacao4/nfeInutilizacaoNF\"",
             envelope,
             config.getPfxBytes(),
             config.getSenhaPfx(),
@@ -354,7 +354,7 @@ public final class Sefaz4jNFe {
         String envelope = SoapEnvelopeBuilder.envelopeRecepcaoEvento(xmlEventoAssinado, 1L);
         String respostaBruta = SefazHttpClient.postar(
             url,
-            "http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4/nfeRecepcaoEvento",
+            "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4/nfeRecepcaoEvento\"",
             envelope,
             config.getPfxBytes(),
             config.getSenhaPfx(),
@@ -386,7 +386,7 @@ public final class Sefaz4jNFe {
         String envelope = SoapEnvelopeBuilder.envelopeAutorizacao(xmlAssinado, 1L);
         String respostaBruta = SefazHttpClient.postar(
             urlAutorizacao,
-            "http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4/nfeAutorizacaoLote",
+            "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4/nfeAutorizacaoLote\"",
             envelope,
             config.getPfxBytes(),
             config.getSenhaPfx(),
