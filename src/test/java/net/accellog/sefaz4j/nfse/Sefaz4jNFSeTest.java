@@ -13,6 +13,7 @@ import net.accellog.sefaz4j.nfse.model.TCInfoValores;
 import net.accellog.sefaz4j.nfse.model.TCLocPrest;
 import net.accellog.sefaz4j.nfse.model.TCRegTrib;
 import net.accellog.sefaz4j.nfse.model.TCServ;
+import net.accellog.sefaz4j.nfse.model.TCSubstituicao;
 import net.accellog.sefaz4j.nfse.model.TCTribMunicipal;
 import net.accellog.sefaz4j.nfse.model.TCTribTotal;
 import net.accellog.sefaz4j.nfse.model.TCVServPrest;
@@ -477,6 +478,167 @@ public class Sefaz4jNFSeTest {
         Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, pfxBytes, "teste123");
 
         Sefaz4jNFSe.cancelar(config, CHAVE_ACESSO_EVENTO, "123", 1, X_MOTIVO_VALIDO);
+    }
+
+    /**
+     * Chave da NFS-e SUBSTITUTA (a nova, devolvida pela emissão da DPS substituta), distinta da
+     * {@link #CHAVE_ACESSO_EVENTO} (a antiga, que o evento {@code e105102} cancela). Também precisa
+     * casar com {@code TSChaveNFSe} ({@code [0-9]{6}([0-9A-Z]{14})[0-9]{30}}), porque vai no
+     * {@code chSubstituta} do fragmento validado contra {@code pedRegEvento_v1.01.xsd}.
+     */
+    private static final String CHAVE_ACESSO_SUBSTITUTA =
+        "35503081" + "2" + "12345678000195" + "1000000000001" + "2508" + "000067890" + "0";
+
+    private static final String X_MOTIVO_SUBSTITUICAO = "Substituicao por desenquadramento do Simples Nacional";
+
+    /**
+     * Fluxo composto do {@code cancelarPorSubstituicao}: emite a DPS substituta e, com a chave nova
+     * devolvida pelo ADN, envia o evento {@code e105102} contra a chave ANTIGA. Os dois passos batem
+     * em caminhos diferentes do servidor simulado (a emissão na URL base, o evento em
+     * {@code base/{chaveAntiga}/eventos}), e o teste inspeciona o corpo transmitido ao segundo para
+     * provar que o {@code chSubstituta} aponta para a chave NOVA, não para a antiga.
+     */
+    @Test
+    public void cancelarPorSubstituicaoEmiteASubstitutaEDepoisEnviaOEventoE105102() {
+        String[] xmlEventoRecebido = new String[1];
+        String[] pathEventoRecebido = new String[1];
+
+        servidor.createContext("/nfse-substituicao", exchange -> {
+            String xmlNFSe = "<NFSe xmlns=\"http://www.sped.fazenda.gov.br/nfse\"><infNFSe Id=\"NFSNOVA\"><cStat>100</cStat></infNFSe></NFSe>";
+            String corpoJson = "{\"chaveAcesso\":\"" + CHAVE_ACESSO_SUBSTITUTA + "\",\"nfseXmlGZipB64\":\""
+                + net.accellog.sefaz4j.nfse.webservice.PayloadCompactado.comprimirECodificar(xmlNFSe) + "\"}";
+            byte[] resposta = corpoJson.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        // Contexto mais específico: o com.sun.net.httpserver casa pelo prefixo mais longo, então o
+        // POST do evento cai aqui e não no contexto de emissão acima.
+        servidor.createContext("/nfse-substituicao/" + CHAVE_ACESSO_EVENTO + "/eventos", exchange -> {
+            pathEventoRecebido[0] = exchange.getRequestURI().getPath();
+            String corpoRequisicao = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            xmlEventoRecebido[0] = xmlDoCampoGZipB64(corpoRequisicao, "eventoXmlGZipB64");
+
+            String xmlEventoProcessado = "<evento xmlns=\"http://www.sped.fazenda.gov.br/nfse\" versao=\"1.01\">"
+                + "<infEvento Id=\"EVTSUB\"><cStat>135</cStat></infEvento></evento>";
+            String corpoJson = "{\"eventoXmlGZipB64\":\""
+                + net.accellog.sefaz4j.nfse.webservice.PayloadCompactado.comprimirECodificar(xmlEventoProcessado) + "\"}";
+            byte[] resposta = corpoJson.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, pfxBytes, "teste123");
+        config.setUrlOverride("https://localhost:" + servidor.getAddress().getPort() + "/nfse-substituicao");
+
+        TCDPS dpsSubstituta = montarDpsMinimaValida();
+        dpsSubstituta.getInfDPS().setSubst(
+            montarSubst(CHAVE_ACESSO_EVENTO, "01", X_MOTIVO_SUBSTITUICAO)
+        );
+
+        ResultadoEvento resultado = Sefaz4jNFSe.cancelarPorSubstituicao(
+            config, CHAVE_ACESSO_EVENTO, CNPJ_AUTOR, dpsSubstituta
+        );
+
+        assertTrue(resultado.isOk());
+        assertEquals("135", resultado.getCStat());
+        assertTrue(resultado.getProtocoloXml().contains("<infEvento Id=\"EVTSUB\">"));
+
+        assertEquals("/nfse-substituicao/" + CHAVE_ACESSO_EVENTO + "/eventos", pathEventoRecebido[0]);
+
+        String xmlEnviado = xmlEventoRecebido[0];
+        assertTrue("o XML transmitido deve conter o elemento do evento de substituição",
+            xmlEnviado.contains("<e105102"));
+        assertTrue("o xDesc é uma enumeração de valor único no TE105102",
+            xmlEnviado.contains("<xDesc>Cancelamento de NFS-e por Substituição</xDesc>"));
+        assertTrue("cMotivo vem do DPS/infDPS/subst/cMotivo", xmlEnviado.contains("<cMotivo>01</cMotivo>"));
+        assertTrue("xMotivo vem do DPS/infDPS/subst/xMotivo",
+            xmlEnviado.contains("<xMotivo>" + X_MOTIVO_SUBSTITUICAO + "</xMotivo>"));
+        assertTrue("chSubstituta deve ser a chave NOVA devolvida pela emissão",
+            xmlEnviado.contains("<chSubstituta>" + CHAVE_ACESSO_SUBSTITUTA + "</chSubstituta>"));
+        assertTrue("o evento é registrado contra a chave ANTIGA",
+            xmlEnviado.contains("<chNFSe>" + CHAVE_ACESSO_EVENTO + "</chNFSe>"));
+        assertTrue(xmlEnviado.contains("Id=\"EVT" + CHAVE_ACESSO_EVENTO + "105102001\""));
+        assertTrue(xmlEnviado.contains("Id=\"PRE" + CHAVE_ACESSO_EVENTO + "105102\""));
+        assertTrue("o infEvento deve ter sido assinado", xmlEnviado.contains("SignatureValue"));
+    }
+
+    /**
+     * Se a emissão da DPS substituta é rejeitada, o evento {@code e105102} NÃO pode ser tentado —
+     * cancelar a NFS-e antiga sem uma substituta válida deixaria o tomador sem documento fiscal
+     * algum. O handler registra TODOS os caminhos que recebeu (o contexto casa por prefixo, então
+     * uma chamada indevida a {@code .../eventos} cairia nele também) e o teste exige que só a
+     * emissão tenha ocorrido.
+     */
+    @Test
+    public void cancelarPorSubstituicaoNaoEnviaOEventoQuandoAEmissaoDaSubstitutaFalha() {
+        java.util.List<String> pathsRecebidos = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+
+        servidor.createContext("/nfse-substituicao-rejeitada", exchange -> {
+            pathsRecebidos.add(exchange.getRequestURI().getPath());
+            String corpoJson = "{\"erros\":[{\"Codigo\":\"E0500\",\"Descricao\":\"DPS substituta invalida\"}]}";
+            byte[] resposta = corpoJson.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, pfxBytes, "teste123");
+        config.setUrlOverride("https://localhost:" + servidor.getAddress().getPort() + "/nfse-substituicao-rejeitada");
+
+        TCDPS dpsSubstituta = montarDpsMinimaValida();
+        dpsSubstituta.getInfDPS().setSubst(montarSubst(CHAVE_ACESSO_EVENTO, "02", X_MOTIVO_SUBSTITUICAO));
+
+        ResultadoEvento resultado = Sefaz4jNFSe.cancelarPorSubstituicao(
+            config, CHAVE_ACESSO_EVENTO, CNPJ_AUTOR, dpsSubstituta
+        );
+
+        assertFalse(resultado.isOk());
+        assertEquals("E0500", resultado.getCStat());
+        assertEquals("DPS substituta invalida", resultado.getMensagem());
+        assertNull("nenhum evento foi transmitido, então não há protocolo", resultado.getProtocoloXml());
+
+        assertEquals("apenas a emissão deve ter batido no servidor: " + pathsRecebidos,
+            java.util.List.of("/nfse-substituicao-rejeitada"), pathsRecebidos);
+    }
+
+    /** Sem o grupo {@code subst} não há de onde tirar cMotivo/xMotivo — o schema TE105102 os exige. */
+    @Test(expected = IllegalArgumentException.class)
+    public void cancelarPorSubstituicaoRejeitaDpsSemOGrupoSubst() {
+        Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, pfxBytes, "teste123");
+
+        Sefaz4jNFSe.cancelarPorSubstituicao(config, CHAVE_ACESSO_EVENTO, CNPJ_AUTOR, montarDpsMinimaValida());
+    }
+
+    /** O {@code chSubstda} da DPS substituta tem de apontar para a mesma NFS-e que o evento cancela. */
+    @Test(expected = IllegalArgumentException.class)
+    public void cancelarPorSubstituicaoRejeitaChSubstdaDivergenteDaChaveAntiga() {
+        Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, pfxBytes, "teste123");
+
+        TCDPS dpsSubstituta = montarDpsMinimaValida();
+        dpsSubstituta.getInfDPS().setSubst(montarSubst(CHAVE_ACESSO_SUBSTITUTA, "01", X_MOTIVO_SUBSTITUICAO));
+
+        Sefaz4jNFSe.cancelarPorSubstituicao(config, CHAVE_ACESSO_EVENTO, CNPJ_AUTOR, dpsSubstituta);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void cancelarPorSubstituicaoRejeitaChaveAntigaInvalida() {
+        Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, pfxBytes, "teste123");
+
+        Sefaz4jNFSe.cancelarPorSubstituicao(config, "chave-muito-curta", CNPJ_AUTOR, montarDpsMinimaValida());
+    }
+
+    private static TCSubstituicao montarSubst(String chSubstda, String cMotivo, String xMotivo) {
+        TCSubstituicao subst = new TCSubstituicao();
+        subst.setChSubstda(chSubstda);
+        subst.setCMotivo(cMotivo);
+        subst.setXMotivo(xMotivo);
+        return subst;
     }
 
     private static String xmlDoCampoGZipB64(String corpoJson, String campo) throws java.io.IOException {

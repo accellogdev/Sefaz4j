@@ -7,6 +7,7 @@ import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -168,6 +169,88 @@ public class EventoNFSeXmlBuilderTest {
 
         NodeList e105102 = documento.getElementsByTagNameNS(NFSE_NAMESPACE, "e105102");
         assertEquals(1, e105102.getLength());
+    }
+
+    /** Chave da NFS-e SUBSTITUTA (a nova), distinta da {@link #CH_NFSE} (a substituída). */
+    private static final String CH_NFSE_SUBSTITUTA =
+        "35503081" + "2" + "12345678000195" + "1000000000001" + "2508" + "000067890" + "0";
+
+    /**
+     * {@code TE105102/xDesc} é uma {@code xs:enumeration} de valor único — o texto tem de ser
+     * exatamente este, com acentuação. {@code cMotivo} é {@code TSCodJustSubst}, cuja enumeração são
+     * strings de DOIS dígitos ("01".."05", "99"), não inteiros.
+     */
+    @Test
+    public void fragmentoSubstituicaoUsaOXDescFixoExatoMaisCMotivoEChSubstituta() {
+        String fragmento = EventoNFSeXmlBuilder.fragmentoSubstituicao(
+            "01", "Substituicao por desenquadramento do Simples Nacional", CH_NFSE_SUBSTITUTA
+        );
+
+        assertTrue(fragmento.startsWith("<e105102>"));
+        assertTrue(fragmento.endsWith("</e105102>"));
+        assertTrue("o xDesc é uma enumeração de valor único no TE105102",
+            fragmento.contains("<xDesc>Cancelamento de NFS-e por Substituição</xDesc>"));
+        assertTrue(fragmento.contains("<cMotivo>01</cMotivo>"));
+        assertTrue(fragmento.contains("<xMotivo>Substituicao por desenquadramento do Simples Nacional</xMotivo>"));
+        assertTrue(fragmento.contains("<chSubstituta>" + CH_NFSE_SUBSTITUTA + "</chSubstituta>"));
+    }
+
+    /** {@code xMotivo} é {@code minOccurs="0"} no {@code TE105102} (diferente do TE101101). */
+    @Test
+    public void fragmentoSubstituicaoOmiteXMotivoQuandoNulo() {
+        String fragmento = EventoNFSeXmlBuilder.fragmentoSubstituicao("99", null, CH_NFSE_SUBSTITUTA);
+
+        assertFalse("xMotivo é opcional no TE105102 — passando null o elemento não deve aparecer",
+            fragmento.contains("<xMotivo>"));
+        assertTrue(fragmento.contains("<cMotivo>99</cMotivo>"));
+        assertTrue(fragmento.contains("<chSubstituta>" + CH_NFSE_SUBSTITUTA + "</chSubstituta>"));
+    }
+
+    @Test
+    public void fragmentoSubstituicaoEscapaOXMotivo() {
+        String fragmento = EventoNFSeXmlBuilder.fragmentoSubstituicao(
+            "05", "Rejeitada pelo tomador <A> & <B> conforme acordo", CH_NFSE_SUBSTITUTA
+        );
+
+        assertTrue(fragmento.contains("<xMotivo>Rejeitada pelo tomador &lt;A&gt; &amp; &lt;B&gt; conforme acordo</xMotivo>"));
+    }
+
+    /**
+     * Mesma validação em duas passadas do cancelamento simples: o {@code pedRegEvento} do evento
+     * {@code e105102} também é validável isoladamente contra o seu próprio schema.
+     */
+    @Test
+    public void pedRegEventoDeSubstituicaoValidaContraOSeuProprioSchema() {
+        String pedRegEvento = EventoNFSeXmlBuilder.montarPedRegEvento(
+            "2",
+            "12345678000195",
+            CH_NFSE,
+            EventoNFSeXmlBuilder.TIPO_EVENTO_SUBSTITUICAO,
+            EventoNFSeXmlBuilder.agora(),
+            EventoNFSeXmlBuilder.fragmentoSubstituicao("01", "Substituicao por erro de enquadramento", CH_NFSE_SUBSTITUTA)
+        );
+
+        ValidadorXsd.validar(pedRegEvento, "/schemas/nfse/pedRegEvento_v1.01.xsd");
+    }
+
+    /** Mesmo caso, sem o {@code xMotivo} opcional — prova que o fragmento continua válido. */
+    @Test
+    public void pedRegEventoDeSubstituicaoSemXMotivoValidaContraOSeuProprioSchema() {
+        String pedRegEvento = EventoNFSeXmlBuilder.montarPedRegEvento(
+            "2",
+            "12345678000195",
+            CH_NFSE,
+            EventoNFSeXmlBuilder.TIPO_EVENTO_SUBSTITUICAO,
+            EventoNFSeXmlBuilder.agora(),
+            EventoNFSeXmlBuilder.fragmentoSubstituicao("99", null, CH_NFSE_SUBSTITUTA)
+        );
+
+        ValidadorXsd.validar(pedRegEvento, "/schemas/nfse/pedRegEvento_v1.01.xsd");
+    }
+
+    @Test
+    public void tipoEventoSubstituicaoEOSufixoDoElementoE105102() {
+        assertEquals("105102", EventoNFSeXmlBuilder.TIPO_EVENTO_SUBSTITUICAO);
     }
 
     @Test

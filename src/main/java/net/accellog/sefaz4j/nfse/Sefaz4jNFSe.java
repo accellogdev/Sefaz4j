@@ -2,6 +2,7 @@ package net.accellog.sefaz4j.nfse;
 
 import net.accellog.sefaz4j.assinatura.AssinadorXml;
 import net.accellog.sefaz4j.nfse.model.TCDPS;
+import net.accellog.sefaz4j.nfse.model.TCSubstituicao;
 import net.accellog.sefaz4j.nfse.webservice.PayloadCompactado;
 import net.accellog.sefaz4j.nfse.webservice.RespostaNFSe;
 import net.accellog.sefaz4j.nfse.webservice.RespostaNFSeParser;
@@ -144,6 +145,71 @@ public final class Sefaz4jNFSe {
         ValidadorXsd.validar(xmlEventoAssinado, EVENTO_XSD_RAIZ);
 
         return transmitirEvento(config, chaveAcesso, xmlEventoAssinado);
+    }
+
+    /**
+     * Cancela uma NFS-e por substituição: emite a DPS substituta e, se aceita, envia o evento
+     * {@code e105102} referenciando a nova chave contra a NFS-e antiga.
+     *
+     * <p>{@code cMotivo}/{@code xMotivo} do evento NÃO são parâmetros separados — o
+     * {@code TE105102} documenta que vêm de {@code DPS/infDPS/subst/cMotivo}/{@code xMotivo}, então
+     * {@code dpsSubstituta.getInfDPS().getSubst()} já deve estar preenchido pelo chamador com
+     * {@code chSubstda} = {@code chaveAntiga}, {@code cMotivo} ({@code TSCodJustSubst}: "01" a "05"
+     * ou "99") e, opcionalmente, {@code xMotivo} ({@code TSMotivo}: 15 a 255 caracteres). Os valores
+     * em si são validados pelo XSD ao montar o {@code pedRegEvento}, não por esta fachada.</p>
+     *
+     * <p>Se a emissão da nova DPS falhar (tecnicamente ou por rejeição de negócio), o evento de
+     * substituição NÃO é tentado — cancelar a NFS-e antiga sem uma substituta válida deixaria o
+     * tomador sem documento fiscal algum. Nesse caso o {@code ResultadoEvento} devolvido carrega o
+     * {@code cStat}/{@code mensagem} da EMISSÃO recusada.</p>
+     *
+     * @param chaveAntiga chave da NFS-e a ser substituída (a que o evento cancela)
+     * @param cnpjAutor   CNPJ do autor do evento ({@code TSCNPJ}), pelo mesmo motivo de {@link #cancelar}
+     */
+    public static ResultadoEvento cancelarPorSubstituicao(Sefaz4jConfig config, String chaveAntiga, String cnpjAutor, TCDPS dpsSubstituta) {
+        exigirChaveAcessoValida(chaveAntiga);
+        exigirCnpjValido(cnpjAutor);
+
+        TCSubstituicao subst = dpsSubstituta.getInfDPS() != null ? dpsSubstituta.getInfDPS().getSubst() : null;
+        if (subst == null) {
+            throw new IllegalArgumentException(
+                "dpsSubstituta.infDPS.subst deve estar preenchido (chSubstda, cMotivo[, xMotivo]) antes de chamar cancelarPorSubstituicao"
+            );
+        }
+        if (!chaveAntiga.equals(subst.getChSubstda())) {
+            throw new IllegalArgumentException(
+                "dpsSubstituta.infDPS.subst.chSubstda ('" + subst.getChSubstda() + "') deve ser igual a chaveAntiga ('" + chaveAntiga + "')"
+            );
+        }
+
+        ResultadoEmissao novaEmissao = emitir(config, dpsSubstituta);
+        if (!novaEmissao.isOk()) {
+            return new ResultadoEvento(false, novaEmissao.getCStat(), novaEmissao.getMensagem(), null);
+        }
+        String chaveNova = novaEmissao.getChaveAcesso();
+
+        String tpAmb = String.valueOf(config.getAmbiente().getTpAmb());
+        // Mesmo instante para dhEvento (infPedReg) e dhProc (infEvento), como em cancelar.
+        String agora = EventoNFSeXmlBuilder.agora();
+        String tipoEvento = EventoNFSeXmlBuilder.TIPO_EVENTO_SUBSTITUICAO;
+
+        String pedRegEventoXml = EventoNFSeXmlBuilder.montarPedRegEvento(
+            tpAmb, cnpjAutor, chaveAntiga, tipoEvento, agora,
+            EventoNFSeXmlBuilder.fragmentoSubstituicao(subst.getCMotivo(), subst.getXMotivo(), chaveNova)
+        );
+        // Mesma validação em duas passadas de cancelar: pedRegEvento isolado agora, evento completo
+        // só depois de assinado.
+        ValidadorXsd.validar(pedRegEventoXml, PED_REG_EVENTO_XSD_RAIZ);
+
+        Document documento = EventoNFSeXmlBuilder.envolverEmEvento(chaveAntiga, tipoEvento, agora, pedRegEventoXml);
+        // Vale aqui a mesma ressalva registrada em cancelar sobre QUAL documento o ADN espera
+        // receber assinado (evento externo vs. pedRegEvento isolado).
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFSE_NAMESPACE, "infEvento", ALGORITMO_ASSINATURA, ALGORITMO_DIGEST);
+
+        String xmlEventoAssinado = serializarDocumento(documento);
+        ValidadorXsd.validar(xmlEventoAssinado, EVENTO_XSD_RAIZ);
+
+        return transmitirEvento(config, chaveAntiga, xmlEventoAssinado);
     }
 
     private static ResultadoEvento transmitirEvento(Sefaz4jConfig config, String chaveAcesso, String xmlEventoAssinado) {

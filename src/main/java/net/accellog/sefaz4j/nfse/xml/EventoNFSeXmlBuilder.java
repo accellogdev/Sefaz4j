@@ -48,6 +48,9 @@ public final class EventoNFSeXmlBuilder {
     /** Sufixo numérico do elemento {@code e101101} (evento de cancelamento). */
     public static final String TIPO_EVENTO_CANCELAMENTO = "101101";
 
+    /** Sufixo numérico do elemento {@code e105102} (evento de cancelamento por substituição). */
+    public static final String TIPO_EVENTO_SUBSTITUICAO = "105102";
+
     /** {@code TVerNFSe} aceita só "1.00" ou "1.01"; esta biblioteca emite sempre a mais recente. */
     private static final String VERSAO = "1.01";
 
@@ -90,6 +93,27 @@ public final class EventoNFSeXmlBuilder {
             "<cMotivo>" + cMotivo + "</cMotivo>" +
             "<xMotivo>" + escaparTextoXml(xMotivo) + "</xMotivo>" +
             "</e101101>";
+    }
+
+    /**
+     * Fragmento {@code <e105102>} do evento de cancelamento por substituição.
+     *
+     * <p>{@code cMotivo} é {@code TSCodJustSubst}, cuja enumeração são strings de DOIS dígitos
+     * ("01" a "05" e "99"), não inteiros — diferente do {@code TSCodJustCanc} do {@code e101101}.
+     * {@code xMotivo} é {@code minOccurs="0"} no {@code TE105102} (também diferente do
+     * {@code e101101}, onde é obrigatório): passe {@code null} para omiti-lo. Ambos são "obtidos do
+     * campo da DPS {@code DPS/infDPS/subst/cMotivo}/{@code xMotivo}", segundo a documentação do
+     * próprio XSD. Já o {@code chSubstituta} é a chave da NFS-e NOVA, independente da DPS.</p>
+     */
+    public static String fragmentoSubstituicao(String cMotivo, String xMotivo, String chSubstituta) {
+        // xDesc é uma xs:enumeration de valor único no TE105102 — o texto tem de ser exatamente este,
+        // com acentuação e hífen inclusos.
+        return "<e105102>" +
+            "<xDesc>Cancelamento de NFS-e por Substituição</xDesc>" +
+            "<cMotivo>" + cMotivo + "</cMotivo>" +
+            (xMotivo != null ? "<xMotivo>" + escaparTextoXml(xMotivo) + "</xMotivo>" : "") +
+            "<chSubstituta>" + chSubstituta + "</chSubstituta>" +
+            "</e105102>";
     }
 
     /**
