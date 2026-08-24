@@ -114,6 +114,38 @@ public class Sefaz4jNFSeTest {
         assertTrue(resultado.getXmlAutorizado().contains("<infNFSe Id=\"NFS123\">"));
     }
 
+    /**
+     * TCInfNFSe/cStat (TStat, tiposSimples_v1.01.xsd) enumera só 100/102/103/107, e as quatro são
+     * NFS-e geradas com sucesso (Gerada / Decisão Judicial / Avulsa / MEI) — ao contrário da NFe/CTe,
+     * aqui cStat classifica o TIPO de sucesso, não autorização-vs-rejeição. Prova que 102/103/107
+     * também são reportados como ok=true (sem enfraquecer a cobertura já existente do cStat=100).
+     */
+    @Test
+    public void enviarXmlAssinadoRetornaOkParaTodosOsCStatDeSucesso() {
+        for (String cStatDeSucesso : new String[] {"102", "103", "107"}) {
+            String caminho = "/nfse-cstat-" + cStatDeSucesso;
+            servidor.createContext(caminho, exchange -> {
+                String xmlNFSe = "<NFSe xmlns=\"http://www.sped.fazenda.gov.br/nfse\"><infNFSe Id=\"NFS123\"><cStat>"
+                    + cStatDeSucesso + "</cStat></infNFSe></NFSe>";
+                String corpoJson = "{\"chaveAcesso\":\"352025123456780001950005100000000000012345\",\"nfseXmlGZipB64\":\""
+                    + net.accellog.sefaz4j.nfse.webservice.PayloadCompactado.comprimirECodificar(xmlNFSe) + "\"}";
+                byte[] resposta = corpoJson.getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().add("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, resposta.length);
+                exchange.getResponseBody().write(resposta);
+                exchange.close();
+            });
+
+            Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, pfxBytes, "teste123");
+            config.setUrlOverride("https://localhost:" + servidor.getAddress().getPort() + caminho);
+
+            ResultadoEmissao resultado = Sefaz4jNFSe.enviarXmlAssinado(config, xmlDpsAssinadoValido());
+
+            assertTrue("cStat " + cStatDeSucesso + " deveria ser ok=true", resultado.isOk());
+            assertEquals(cStatDeSucesso, resultado.getCStat());
+        }
+    }
+
     @Test
     public void enviarXmlAssinadoRetornaRejeitadoSemLancarExcecao() {
         servidor.createContext("/nfse-rejeitada", exchange -> {

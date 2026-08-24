@@ -39,6 +39,11 @@ public final class Sefaz4jNFSe {
     private static final String ALGORITMO_DIGEST = MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA256;
     private static final String URL_PRODUCAO = "https://sefin.nfse.gov.br/sefinnacional/nfse";
     private static final String URL_HOMOLOGACAO = "https://sefin.producaorestrita.nfse.gov.br/SefinNacional/nfse";
+    // TCInfNFSe/cStat (TStat, tiposSimples_v1.01.xsd) enumera exatamente 100/102/103/107, e as
+    // QUATRO representam uma NFS-e gerada com sucesso (Gerada / Decisão Judicial / Avulsa / MEI) —
+    // ao contrário da NFe/CTe, este cStat classifica o TIPO de sucesso, não autorização-vs-rejeição;
+    // rejeição de negócio de fato chega pelo array JSON "erros", já tratado acima por !isSucesso().
+    private static final java.util.Set<String> CSTAT_SUCESSO = java.util.Set.of("100", "102", "103", "107");
 
     private Sefaz4jNFSe() {
     }
@@ -91,7 +96,7 @@ public final class Sefaz4jNFSe {
         }
 
         String cStat = extrairTextoDoElemento(resposta.getXmlDescomprimido(), "cStat");
-        return new ResultadoEmissao("100".equals(cStat), cStat, null, resposta.getChaveAcesso(), resposta.getXmlDescomprimido());
+        return new ResultadoEmissao(CSTAT_SUCESSO.contains(cStat), cStat, null, resposta.getChaveAcesso(), resposta.getXmlDescomprimido());
     }
 
     static String baseUrlEmissao(Sefaz4jConfig config) {
