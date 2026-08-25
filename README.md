@@ -268,6 +268,94 @@ ResultadoEvento segundaCce = Sefaz4jCTe.corrigirCartaDeCorrecao(config, chaveAce
 para cancelamento/CC-e), com `getCStat()`/`getXMotivo()` sempre preenchidos. Não há
 `Sefaz4jCTe.inutilizar` — inutilização é permanentemente fora de escopo para CTe (ver acima).
 
+## MDFe
+
+O MDFe (Manifesto Eletrônico de Documentos Fiscais) é o quarto documento coberto pela lib
+(`net.accellog.sefaz4j.mdfe`), com emissão e ciclo de vida pós-emissão (consulta/cancelamento/
+encerramento/inclusão de condutor). Arquiteturalmente é mais parecido com o NFe do que com o CTe: a
+recepção do MDFe 3.00 é um serviço de **lote**, então `emitir` faz o polling de `MDFeRetRecepcao`
+quando o lote fica "em processamento" — igual ao NFe, diferente do CTe (síncrono).
+
+```java
+import net.accellog.sefaz4j.mdfe.ResultadoEmissao;
+import net.accellog.sefaz4j.mdfe.Sefaz4jConfig;
+import net.accellog.sefaz4j.mdfe.Sefaz4jMDFe;
+import net.accellog.sefaz4j.mdfe.model.ObjectFactory;
+import net.accellog.sefaz4j.mdfe.model.TMDFe;
+import net.accellog.sefaz4j.endpoints.Ambiente;
+import net.accellog.sefaz4j.endpoints.UF;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+byte[] pfxBytes = Files.readAllBytes(Path.of("/caminho/para/certificado.pfx"));
+
+Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.HOMOLOGACAO, pfxBytes, "senha-do-pfx");
+
+// TMDFe é gerado por JAXB a partir da XSD oficial do MDFe 3.00 (net.accellog.sefaz4j.mdfe.model) —
+// monte-o com ObjectFactory preenchendo ide/emit/infModal/infDoc/tot conforme o manual do MDF-e.
+ObjectFactory fabrica = new ObjectFactory();
+TMDFe mdfe = fabrica.createTMDFe();
+// ... preencher mdfe.setInfMDFe(...) com os grupos obrigatórios do MDF-e ...
+
+ResultadoEmissao resultado = Sefaz4jMDFe.emitir(config, mdfe);
+
+if (resultado.isOk()) {
+    String xmlAutorizado = resultado.getXmlAutorizado(); // <mdfeProc> pronto para persistir/DAMDFE
+} else {
+    // cStat/xMotivo != 100: rejeição de negócio da SEFAZ, não uma falha técnica
+    System.out.println(resultado.getCStat() + " - " + resultado.getXMotivo());
+}
+```
+
+Se o XML já vier assinado por outro processo, pule direto para validação+transmissão(+polling) com
+`Sefaz4jMDFe.enviarXmlAssinado(config, xmlAssinado)`.
+
+O conteúdo específico do modal de transporte (`infModal` — rodoviário, aéreo, aquaviário,
+ferroviário) é declarado no XSD oficial como um `xs:any processContents="skip"`, igual ao CTe: a
+lib não gera nem valida esse trecho, quem monta o `TMDFe` constrói o XML do modal escolhido por
+conta própria e injeta ali antes de chamar `emitir`.
+
+As mesmas 3 exceções técnicas do NFe (`CertificadoException`/`ValidacaoXsdException`/
+`ComunicacaoException`) valem para o MDFe, incluindo o caso de lote "ainda em processamento" após
+esgotar o polling (mesmo risco de reenvio às cegas do NFe).
+
+### Ciclo de vida pós-emissão (MDFe)
+
+Assim como no NFe/CTe, `Sefaz4jMDFe` também cobre consulta e três eventos — sem JAXB, XML montado
+por concatenação de string e sempre validado contra a XSD oficial antes de transmitir. Não existe
+Carta de Correção para o MDFe; os três eventos são cancelamento, encerramento (evento específico do
+MDFe, para registrar onde a viagem realmente terminou) e inclusão de condutor:
+
+```java
+import net.accellog.sefaz4j.mdfe.ResultadoConsulta;
+import net.accellog.sefaz4j.mdfe.ResultadoEvento;
+
+// Consultar a situação de um MDF-e já transmitido.
+ResultadoConsulta consulta = Sefaz4jMDFe.consultarSituacao(config, chaveAcesso);
+
+// Cancelar um MDF-e autorizado (chave de acesso, número do protocolo de
+// autorização e uma justificativa com 15 a 255 caracteres).
+ResultadoEvento cancelamento = Sefaz4jMDFe.cancelar(config, chaveAcesso, nProtAutorizacao, justificativa);
+
+// Encerrar o MDF-e: informar onde/quando a viagem terminou (pode ser diferente
+// da UF/município previstos originalmente em ide).
+ResultadoEvento encerramento = Sefaz4jMDFe.encerrar(
+    config, chaveAcesso, nProtAutorizacao, cUFEncerramento, cMunEncerramento, dataEncerramento
+);
+
+// Incluir um condutor no MDF-e (não exige número de protocolo).
+ResultadoEvento condutor = Sefaz4jMDFe.incluirCondutor(config, chaveAcesso, "Nome do Condutor", cpfCondutor);
+// Um segundo condutor no mesmo MDF-e precisa do nSeqEvento explícito (padrão 1 na chamada acima).
+ResultadoEvento segundoCondutor = Sefaz4jMDFe.incluirCondutor(config, chaveAcesso, "Outro Condutor", outroCpf, 2);
+```
+
+`ResultadoConsulta` e `ResultadoEvento` do MDFe seguem o mesmo formato do `ResultadoEmissao`:
+`isOk()` é estrito para o `cStat` de sucesso específico da operação (`100` para consulta, `135`
+para qualquer um dos três eventos), com `getCStat()`/`getXMotivo()` sempre preenchidos. Não há
+`Sefaz4jMDFe.inutilizar` — diferente do CTe (onde a SEFAZ apenas descontinuou o recurso na versão
+4.00), a inutilização nunca fez parte do padrão MDFe.
+
 ## Como testar
 
 ```bash
