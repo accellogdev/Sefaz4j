@@ -356,6 +356,90 @@ para qualquer um dos três eventos), com `getCStat()`/`getXMotivo()` sempre pree
 `Sefaz4jMDFe.inutilizar` — diferente do CTe (onde a SEFAZ apenas descontinuou o recurso na versão
 4.00), a inutilização nunca fez parte do padrão MDFe.
 
+## NFS-e
+
+A NFS-e Padrão Nacional (SEFIN Nacional/ADN) é o documento mais diferente arquiteturalmente da lib
+(`net.accellog.sefaz4j.nfse`): o transporte é **REST+JSON, não SOAP**, e não há divisão por UF — um
+único endpoint nacional atende todos os municípios, então `Sefaz4jConfig` da NFS-e não recebe `UF`
+no construtor. O XML assinado da DPS (Declaração de Prestação de Serviços) é comprimido em gzip,
+codificado em Base64 e enviado dentro de um JSON.
+
+```java
+import net.accellog.sefaz4j.nfse.ResultadoEmissao;
+import net.accellog.sefaz4j.nfse.Sefaz4jConfig;
+import net.accellog.sefaz4j.nfse.Sefaz4jNFSe;
+import net.accellog.sefaz4j.nfse.model.ObjectFactory;
+import net.accellog.sefaz4j.nfse.model.TCDPS;
+import net.accellog.sefaz4j.endpoints.Ambiente;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+byte[] pfxBytes = Files.readAllBytes(Path.of("/caminho/para/certificado.pfx"));
+
+// Sem UF no construtor: a NFS-e Padrão Nacional tem um único endpoint nacional.
+Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, pfxBytes, "senha-do-pfx");
+
+// TCDPS é gerado por JAXB a partir da XSD oficial da DPS 1.01 (net.accellog.sefaz4j.nfse.model) —
+// monte-o com ObjectFactory preenchendo infDPS conforme o manual da NFS-e.
+ObjectFactory fabrica = new ObjectFactory();
+TCDPS dps = fabrica.createTCDPS();
+// ... preencher dps.setInfDPS(...) com os grupos obrigatórios da DPS ...
+
+ResultadoEmissao resultado = Sefaz4jNFSe.emitir(config, dps);
+
+if (resultado.isOk()) {
+    String chaveAcesso = resultado.getChaveAcesso(); // só existe depois de emitida com sucesso
+    String xmlAutorizado = resultado.getXmlAutorizado();
+} else {
+    // cStat/mensagem != sucesso: rejeição de negócio do ADN, não uma falha técnica
+    System.out.println(resultado.getCStat() + " - " + resultado.getMensagem());
+}
+```
+
+Se o XML já vier assinado por outro processo, pule direto para validação+transmissão com
+`Sefaz4jNFSe.enviarXmlAssinado(config, xmlAssinado)`.
+
+Diferente de NFe/CTe/MDFe, os resultados da NFS-e expõem `getMensagem()` em vez de `getXMotivo()`
+(mesmo nome do campo na resposta JSON do ADN); as mesmas 3 exceções técnicas
+(`CertificadoException`/`ValidacaoXsdException`/`ComunicacaoException`) valem aqui também.
+
+### Ciclo de vida pós-emissão (NFS-e)
+
+Não existe Carta de Correção neste padrão — a substituição cumpre esse papel. `Sefaz4jNFSe` cobre
+consulta, cancelamento simples e cancelamento por substituição:
+
+```java
+import net.accellog.sefaz4j.nfse.ResultadoConsulta;
+import net.accellog.sefaz4j.nfse.ResultadoEvento;
+import net.accellog.sefaz4j.nfse.model.TCSubstituicao;
+
+// Consultar a situação de uma NFS-e já transmitida (chaveAcesso vem de
+// resultado.getChaveAcesso() da emissão, nunca é calculada localmente).
+ResultadoConsulta consulta = Sefaz4jNFSe.consultarSituacao(config, chaveAcesso);
+
+// Cancelar uma NFS-e autorizada: cMotivo é 1 (Erro na Emissão), 2 (Serviço não
+// Prestado) ou 9 (Outros); cnpjAutor é explícito (não é derivado da chave, ao
+// contrário de NFe/CTe/MDFe, porque o layout de bytes da chNFSe não é público).
+ResultadoEvento cancelamento = Sefaz4jNFSe.cancelar(config, chaveAcesso, cnpjAutor, 2, "Serviço não foi prestado");
+
+// Cancelar por substituição: emite a DPS substituta e só envia o evento de
+// cancelamento se a nova emissão for autorizada. cMotivo/xMotivo do evento vêm
+// de dpsSubstituta.getInfDPS().getSubst(), não são parâmetros separados.
+ObjectFactory fabrica = new ObjectFactory();
+TCSubstituicao subst = fabrica.createTCSubstituicao();
+subst.setChSubstda(chaveAcesso);
+subst.setCMotivo("01"); // TSCodJustSubst: "01" a "05" ou "99"
+TCDPS dpsSubstituta = fabrica.createTCDPS();
+// ... preencher dpsSubstituta.setInfDPS(...) e infDPS.setSubst(subst) ...
+ResultadoEvento substituicao = Sefaz4jNFSe.cancelarPorSubstituicao(config, chaveAcesso, cnpjAutor, dpsSubstituta);
+```
+
+`ResultadoConsulta` e `ResultadoEvento` da NFS-e seguem o mesmo formato do `ResultadoEmissao`:
+`isOk()`/`getCStat()`/`getMensagem()` sempre preenchidos. Não há `Sefaz4jNFSe.inutilizar` (o padrão
+não tem esse conceito) nem eventos de confirmação/rejeição do tomador/intermediário (fora de escopo
+desta lib por enquanto).
+
 ## Como testar
 
 ```bash
