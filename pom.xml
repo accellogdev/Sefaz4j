@@ -123,6 +123,7 @@
 								<schemaInclude>retConsReciMDFe_v3.00.xsd</schemaInclude>
 							</schemaIncludes>
 							<generatePackage>net.accellog.sefaz4j.mdfe.model</generatePackage>
+							<generateDirectory>${project.build.directory}/generated-sources/xjc-mdfe</generateDirectory>
 						</configuration>
 					</execution>
 					<execution>
@@ -140,6 +141,7 @@
 								<schemaInclude>retConsReciNFe_v4.00.xsd</schemaInclude>
 							</schemaIncludes>
 							<generatePackage>net.accellog.sefaz4j.nfe.model</generatePackage>
+							<generateDirectory>${project.build.directory}/generated-sources/xjc-nfe</generateDirectory>
 						</configuration>
 					</execution>
 					<execution>
@@ -153,6 +155,7 @@
 								<schemaInclude>cte_v4.00.xsd</schemaInclude>
 							</schemaIncludes>
 							<generatePackage>net.accellog.sefaz4j.cte.model</generatePackage>
+							<generateDirectory>${project.build.directory}/generated-sources/xjc-cte</generateDirectory>
 						</configuration>
 					</execution>
 					<execution>
@@ -166,6 +169,7 @@
 								<schemaInclude>DPS_v1.01.xsd</schemaInclude>
 							</schemaIncludes>
 							<generatePackage>net.accellog.sefaz4j.nfse.model</generatePackage>
+							<generateDirectory>${project.build.directory}/generated-sources/xjc-nfse</generateDirectory>
 						</configuration>
 					</execution>
 				</executions>

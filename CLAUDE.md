@@ -215,6 +215,12 @@ the last item, in `DpsXmlBuilder.java`). A future session must not treat these a
 - **Event JSON field name** — `CAMPO_JSON_EVENTO = "eventoXmlGZipB64"` is inferred purely from the
   naming convention already observed in `dpsXmlGZipB64`/`nfseXmlGZipB64`, not confirmed against the
   SEFIN Nacional integration manual.
+- **`"dpsXmlGZipB64"` confirmed real, but only as a request-side field name** — a real gzip+Base64
+  JSON payload captured 2026-08-27 decodes to exactly the signed `<DPS>` document (`infDPS` +
+  `Signature`), confirming the `"dpsXmlGZipB64"` key `PayloadCompactado.montarRequisicaoJson` already
+  uses is correct. Because the captured sample carried a DPS, not an NFS-e, it says nothing about
+  whether `"nfseXmlGZipB64"` — the field `RespostaNFSeParser` reads back out of `emitir`/
+  `consultarSituacao` responses — is the real response field name; that guess is still unconfirmed.
 - **Event submission endpoint path** — `{baseUrl}/{chaveAcesso}/eventos`, not confirmed.
 - **Which document the ADN expects signed for an event submission** — the current code assumes the
   full `evento`, signed at its outer, required `infEvento` signature (mirroring NFe/CTe's convention
@@ -372,9 +378,25 @@ just for one version. There is no `Sefaz4jMDFe.inutilizar` and none is planned.
   from the XSDs under `src/main/resources/schemas/nfe/` (`nfe_v4.00.xsd`, `enviNFe_v4.00.xsd`,
   `retEnviNFe_v4.00.xsd`, `consReciNFe_v4.00.xsd`, `retConsReciNFe_v4.00.xsd`) during `generate-sources`.
   The generated classes use the **`javax.xml.bind`** namespace (JAXB 2.3-era `jaxb-api` + `jaxb-runtime`),
-  **not** `jakarta.xml.bind` — don't mix the two on the classpath. Sources land under
-  `target/generated-sources/xjc/`; run `mvn generate-sources` (or `compile`) to (re)populate them before
-  browsing `model` classes in an IDE.
+  **not** `jakarta.xml.bind` — don't mix the two on the classpath. Each of the four `<execution>`s
+  (`xjc-mdfe`/`xjc-nfe`/`xjc-cte`/`xjc-nfse`) has its own `generateDirectory`
+  (`target/generated-sources/xjc-mdfe/`, `xjc-nfe/`, `xjc-cte/`, `xjc-nfse/` — see the staleness-bug note
+  below for why); run `mvn generate-sources` (or `compile`) to (re)populate them before browsing `model`
+  classes in an IDE.
+- **`generateDirectory` must be distinct per xjc `<execution>` — a shared one silently drops 3 of the 4
+  model packages on a fresh checkout.** `maven-jaxb2-plugin`'s staleness check compares the latest mtime
+  among a schema's *source* files against the earliest mtime among the *target* directory's files; when
+  multiple executions shared the plugin's default `target/generated-sources/xjc` directory, the first
+  execution to actually run (`xjc-mdfe`, alphabetically/declaration-order first) wrote into that shared
+  directory, and its write timestamp then made the *shared* directory look newer than the `xjc-nfe`/
+  `xjc-cte`/`xjc-nfse` schema files' own (near-identical, freshly-checked-out) mtimes — so the plugin
+  concluded those three were "already up-to-date" and skipped them entirely, even though nothing had
+  ever been generated for them. This reliably breaks a fresh CI checkout (`git checkout` gives every
+  file essentially the same mtime) but is easy to miss locally, where schema file mtimes are usually
+  spread out enough that the false-positive skip doesn't trigger — confirmed 2026-09-03 by reproducing
+  the exact GitHub Actions failure (`package net.accellog.sefaz4j.nfe.model does not exist`, etc.) only
+  after a `rm -rf target` + fresh `mvn package`, not with an incrementally-built `target/`. Fixed by
+  giving each execution its own `generateDirectory`, isolating the staleness check per schema set.
 - **Signing algorithm**: NFe signatures use **RSA-SHA1** (`SignatureMethod`) with a **SHA-1** digest and
   the plain (non-`WithComments`) C14N transform. This is fixed by the bundled, binding
   `schemas/nfe/xmldsig-core-schema_v1.01.xsd` (`<xsd:restriction>`, not a default) — SEFAZ mandates it for
