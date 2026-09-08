@@ -51,7 +51,11 @@ public final class SefazHttpClient {
             });
             HttpClient httpClient = HTTP_CLIENT_CACHE.computeIfAbsent(
                 chaveCertificado + "|" + timeout.toMillis(),
-                k -> HttpClient.newBuilder().sslContext(sslContext).connectTimeout(timeout).build()
+                k -> HttpClient.newBuilder()
+                    .sslContext(sslContext)
+                    .connectTimeout(timeout)
+                    .version(HttpClient.Version.HTTP_1_1)
+                    .build()
             );
 
             HttpRequest request = HttpRequest.newBuilder()
@@ -85,7 +89,11 @@ public final class SefazHttpClient {
             });
             HttpClient httpClient = HTTP_CLIENT_CACHE.computeIfAbsent(
                 chaveCertificado + "|" + timeout.toMillis(),
-                k -> HttpClient.newBuilder().sslContext(sslContext).connectTimeout(timeout).build()
+                k -> HttpClient.newBuilder()
+                    .sslContext(sslContext)
+                    .connectTimeout(timeout)
+                    .version(HttpClient.Version.HTTP_1_1)
+                    .build()
             );
 
             HttpRequest request = HttpRequest.newBuilder()

@@ -4,6 +4,8 @@ import org.apache.xml.security.Init;
 import org.apache.xml.security.c14n.Canonicalizer;
 import org.apache.xml.security.signature.XMLSignature;
 import org.apache.xml.security.transforms.Transforms;
+import org.apache.xml.security.utils.Constants;
+import org.apache.xml.security.utils.ElementProxy;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
@@ -21,6 +23,44 @@ public final class AssinadorXml {
     }
 
     public static void assinar(Document documentoNaoAssinado, byte[] pfxBytes, String senha, String namespace, String nomeElemento, String algoritmoAssinatura, String algoritmoDigest) {
+        assinar(documentoNaoAssinado, pfxBytes, senha, namespace, nomeElemento, algoritmoAssinatura, algoritmoDigest, ElementProxy.getDefaultPrefix(Constants.SignatureSpecNS));
+    }
+
+    /**
+     * Mesma assinatura de {@link #assinar(Document, byte[], String, String, String, String, String)},
+     * mas com o prefixo do {@code ds:Signature} explícito. O SEFIN Nacional (NFS-e) rejeita QUALQUER
+     * elemento com prefixo de namespace (E1228 "Xml declarado com prefixo de namespace") — inclusive o
+     * próprio {@code ds:Signature}, ao contrário de NFe/CTe/MDFe (SOAP estadual), que aceitam o
+     * {@code ds:} padrão do Apache Santuario normalmente. {@code prefixoAssinatura=""} produz
+     * {@code <Signature xmlns="...">} (sem prefixo) em vez de {@code <ds:Signature xmlns:ds="...">}.
+     *
+     * <p>{@code ElementProxy.setDefaultPrefix} é estado estático global do Santuario — por isso o
+     * valor anterior é salvo e restaurado num {@code finally}, e a troca fica sincronizada, para não
+     * vazar para uma assinatura concorrente de outro tipo de documento (NFe/CTe/MDFe) enquanto esta
+     * roda.</p>
+     */
+    public static synchronized void assinar(
+        Document documentoNaoAssinado, byte[] pfxBytes, String senha, String namespace, String nomeElemento,
+        String algoritmoAssinatura, String algoritmoDigest, String prefixoAssinatura
+    ) {
+        String prefixoAnterior = ElementProxy.getDefaultPrefix(Constants.SignatureSpecNS);
+        try {
+            ElementProxy.setDefaultPrefix(Constants.SignatureSpecNS, prefixoAssinatura);
+            assinarComPrefixoJaConfigurado(documentoNaoAssinado, pfxBytes, senha, namespace, nomeElemento, algoritmoAssinatura, algoritmoDigest);
+        } catch (org.apache.xml.security.exceptions.XMLSecurityException e) {
+            throw new CertificadoException("Falha ao configurar o prefixo de namespace da assinatura (" + nomeElemento + ")", e);
+        } finally {
+            try {
+                ElementProxy.setDefaultPrefix(Constants.SignatureSpecNS, prefixoAnterior);
+            } catch (org.apache.xml.security.exceptions.XMLSecurityException ignore) {
+                // Restaurar o prefixo anterior não deve mascarar uma falha de assinatura já lançada
+                // acima; se o próprio Santuario não aceitar seu valor original de volta, não há nada
+                // de melhor a fazer aqui além de ignorar.
+            }
+        }
+    }
+
+    private static void assinarComPrefixoJaConfigurado(Document documentoNaoAssinado, byte[] pfxBytes, String senha, String namespace, String nomeElemento, String algoritmoAssinatura, String algoritmoDigest) {
         KeyStore.PrivateKeyEntry chavePrivada = CertificadoA1.carregar(pfxBytes, senha);
 
         NodeList elementos = documentoNaoAssinado.getElementsByTagNameNS(namespace, nomeElemento);

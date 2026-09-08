@@ -64,7 +64,9 @@ public final class Sefaz4jNFSe {
     public static ResultadoEmissao emitir(Sefaz4jConfig config, TCDPS dps) {
         Document documento = montarDocumento(dps);
 
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFSE_NAMESPACE, "infDPS", ALGORITMO_ASSINATURA, ALGORITMO_DIGEST);
+        // prefixoAssinatura="" : SEFIN Nacional rejeita ds:Signature com prefixo (E1228) — ver
+        // AssinadorXml.assinar(..., prefixoAssinatura) para o porquê.
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFSE_NAMESPACE, "infDPS", ALGORITMO_ASSINATURA, ALGORITMO_DIGEST, "");
 
         String xmlAssinado = serializarDocumento(documento);
 
@@ -139,7 +141,7 @@ public final class Sefaz4jNFSe {
         // Homologação real rejeitar esta escolha, a correção é isolada: o builder já separa
         // montarPedRegEvento/envolverEmEvento, então basta assinar e transmitir o primeiro em vez do
         // segundo.
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFSE_NAMESPACE, "infEvento", ALGORITMO_ASSINATURA, ALGORITMO_DIGEST);
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFSE_NAMESPACE, "infEvento", ALGORITMO_ASSINATURA, ALGORITMO_DIGEST, "");
 
         String xmlEventoAssinado = serializarDocumento(documento);
         ValidadorXsd.validar(xmlEventoAssinado, EVENTO_XSD_RAIZ);
@@ -204,7 +206,7 @@ public final class Sefaz4jNFSe {
         Document documento = EventoNFSeXmlBuilder.envolverEmEvento(chaveAntiga, tipoEvento, agora, pedRegEventoXml);
         // Vale aqui a mesma ressalva registrada em cancelar sobre QUAL documento o ADN espera
         // receber assinado (evento externo vs. pedRegEvento isolado).
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFSE_NAMESPACE, "infEvento", ALGORITMO_ASSINATURA, ALGORITMO_DIGEST);
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFSE_NAMESPACE, "infEvento", ALGORITMO_ASSINATURA, ALGORITMO_DIGEST, "");
 
         String xmlEventoAssinado = serializarDocumento(documento);
         ValidadorXsd.validar(xmlEventoAssinado, EVENTO_XSD_RAIZ);
@@ -329,7 +331,12 @@ public final class Sefaz4jNFSe {
     private static String serializarDocumento(Document documento) {
         try {
             Transformer transformer = TransformerFactory.newInstance().newTransformer();
-            transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes");
+            // Ao contrário de NFe/CTe (SOAP), aqui o XML resultante é sempre o documento de topo
+            // transmitido isolado (gzip+Base64 dentro do JSON REST) — não um fragmento embutido em
+            // outro XML — então precisa do próprio prólogo `<?xml ... encoding="UTF-8"?>`. Omiti-lo
+            // fazia o SEFIN Nacional rejeitar com E1229 ("Xml não está utilizando codificação UTF-8").
+            transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "no");
+            transformer.setOutputProperty(OutputKeys.ENCODING, "UTF-8");
             StringWriter writer = new StringWriter();
             transformer.transform(new DOMSource(documento), new StreamResult(writer));
             return writer.toString();
