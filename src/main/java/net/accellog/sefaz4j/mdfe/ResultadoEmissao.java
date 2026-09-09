@@ -5,15 +5,13 @@ public final class ResultadoEmissao {
     private final String cStat;
     private final String xMotivo;
     private final String chMDFe;
-    private final String xmlEnviado;
     private final String xmlAutorizado;
 
-    public ResultadoEmissao(boolean ok, String cStat, String xMotivo, String chMDFe, String xmlEnviado, String xmlAutorizado) {
+    public ResultadoEmissao(boolean ok, String cStat, String xMotivo, String chMDFe, String xmlAutorizado) {
         this.ok = ok;
         this.cStat = cStat;
         this.xMotivo = xMotivo;
         this.chMDFe = chMDFe;
-        this.xmlEnviado = xmlEnviado;
         this.xmlAutorizado = xmlAutorizado;
     }
 
@@ -31,15 +29,6 @@ public final class ResultadoEmissao {
 
     public String getChMDFe() {
         return chMDFe;
-    }
-
-    /**
-     * XML do MDF-e assinado exatamente como foi transmitido à SEFAZ (antes de qualquer
-     * compactação de transporte) — para persistência/depuração (ver
-     * {@code net.accellog.services.sefaz.MDFeProcessor} em bot-sefaz).
-     */
-    public String getXmlEnviado() {
-        return xmlEnviado;
     }
 
     public String getXmlAutorizado() {

@@ -292,7 +292,7 @@ public final class Sefaz4jMDFe {
             ? "<mdfeProc versao=\"" + MDFE_VERSAO + "\" xmlns=\"" + MDFE_NAMESPACE + "\">" + xmlAssinado + protocoloXml + "</mdfeProc>"
             : xmlAssinado;
 
-        return new ResultadoEmissao(autorizado, cStatFinal, xMotivoFinal, resposta.getChaveDocumento(), xmlAssinado, xmlFinal);
+        return new ResultadoEmissao(autorizado, cStatFinal, xMotivoFinal, resposta.getChaveDocumento(), xmlFinal);
     }
 
     private static ResultadoEvento enviarEProcessarEvento(Sefaz4jConfig config, String xmlEventoAssinado) {

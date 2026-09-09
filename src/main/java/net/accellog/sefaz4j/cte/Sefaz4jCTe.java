@@ -268,7 +268,7 @@ public final class Sefaz4jCTe {
             ? "<cteProc versao=\"4.00\" xmlns=\"" + CTE_NAMESPACE + "\">" + xmlAssinado + protocoloXml + "</cteProc>"
             : xmlAssinado;
 
-        return new ResultadoEmissao(autorizado, cStatFinal, xMotivoFinal, resposta.getChaveDocumento(), xmlAssinado, xmlFinal);
+        return new ResultadoEmissao(autorizado, cStatFinal, xMotivoFinal, resposta.getChaveDocumento(), xmlFinal);
     }
 
     private static ResultadoEvento enviarEProcessarEvento(Sefaz4jConfig config, String xmlEventoAssinado) {

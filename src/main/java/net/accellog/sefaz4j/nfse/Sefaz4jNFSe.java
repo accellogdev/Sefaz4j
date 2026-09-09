@@ -308,11 +308,15 @@ public final class Sefaz4jNFSe {
         RespostaNFSe resposta = RespostaNFSeParser.parsear(respostaBruta, "nfseXmlGZipB64");
 
         if (!resposta.isSucesso()) {
-            return new ResultadoEmissao(false, resposta.getCodigoErro(), resposta.getMensagemErro(), null, xmlAssinado, null);
+            // xmlAssinado (nao null) no lugar de xmlAutorizado: para a NFSe, diferente de
+            // NFe/CTe/MDFe, nao existe "documento final com protocolo" quando rejeitada -- so o
+            // que foi assinado e enviado. bot-sefaz grava isso em doe_xmlenvio (convencao
+            // ACBr/legado: "XML real de saida", autorizado ou nao).
+            return new ResultadoEmissao(false, resposta.getCodigoErro(), resposta.getMensagemErro(), null, xmlAssinado);
         }
 
         String cStat = extrairTextoDoElemento(resposta.getXmlDescomprimido(), "cStat");
-        return new ResultadoEmissao(CSTAT_SUCESSO.contains(cStat), cStat, null, resposta.getChaveAcesso(), xmlAssinado, resposta.getXmlDescomprimido());
+        return new ResultadoEmissao(CSTAT_SUCESSO.contains(cStat), cStat, null, resposta.getChaveAcesso(), resposta.getXmlDescomprimido());
     }
 
     static String baseUrlEmissao(Sefaz4jConfig config) {
