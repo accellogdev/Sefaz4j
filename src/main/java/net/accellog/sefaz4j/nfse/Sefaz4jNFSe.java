@@ -52,6 +52,13 @@ public final class Sefaz4jNFSe {
     private static final String ALGORITMO_DIGEST = MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA256;
     private static final String URL_PRODUCAO = "https://sefin.nfse.gov.br/sefinnacional/nfse";
     private static final String URL_HOMOLOGACAO = "https://sefin.producaorestrita.nfse.gov.br/SefinNacional/nfse";
+    // Portal de Consulta Pública do SEFIN Nacional -- usado como "link de autenticidade" no
+    // DANFSe (texto + QR code). Diferente da URL de transmissão acima (sefin.*), é um domínio
+    // e formato de URL completamente separados (mesmo padrão do bot Delphi legado, que lia
+    // ACBrNFSeX.NotasFiscais.Items[0].NFSe.Link -- calculado internamente pelo ACBr a partir
+    // de ambiente+chave, não devolvido pela SEFAZ na resposta de autorização).
+    private static final String LINK_CONSULTA_PUBLICA_PRODUCAO = "https://www.nfse.gov.br/ConsultaPublica/?tpc=1&chave=";
+    private static final String LINK_CONSULTA_PUBLICA_HOMOLOGACAO = "https://www.producaorestrita.nfse.gov.br/ConsultaPublica/?tpc=1&chave=";
     // TCInfNFSe/cStat (TStat, tiposSimples_v1.01.xsd) enumera exatamente 100/102/103/107, e as
     // QUATRO representam uma NFS-e gerada com sucesso (Gerada / Decisão Judicial / Avulsa / MEI) —
     // ao contrário da NFe/CTe, este cStat classifica o TIPO de sucesso, não autorização-vs-rejeição;
@@ -321,6 +328,18 @@ public final class Sefaz4jNFSe {
 
     static String baseUrlEmissao(Sefaz4jConfig config) {
         return config.getAmbiente() == net.accellog.sefaz4j.endpoints.Ambiente.PRODUCAO ? URL_PRODUCAO : URL_HOMOLOGACAO;
+    }
+
+    /**
+     * Link do Portal de Consulta Pública (nfse.gov.br) usado como "link de autenticidade" no
+     * DANFSe -- texto + QR code. Calculado localmente (ambiente+chave), não devolvido pela
+     * SEFAZ na resposta de autorização.
+     */
+    public static String linkConsultaPublica(Sefaz4jConfig config, String chaveAcesso) {
+        String base = config.getAmbiente() == net.accellog.sefaz4j.endpoints.Ambiente.PRODUCAO
+            ? LINK_CONSULTA_PUBLICA_PRODUCAO
+            : LINK_CONSULTA_PUBLICA_HOMOLOGACAO;
+        return base + chaveAcesso;
     }
 
     private static String extrairTextoDoElemento(String xml, String nomeLocalElemento) {
