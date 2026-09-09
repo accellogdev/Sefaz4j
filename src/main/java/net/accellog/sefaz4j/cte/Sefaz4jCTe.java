@@ -8,6 +8,7 @@ import net.accellog.sefaz4j.cte.xml.CTeXmlBuilder;
 import net.accellog.sefaz4j.cte.xml.EventoCTeXmlBuilder;
 import net.accellog.sefaz4j.endpoints.EndpointResolver;
 import net.accellog.sefaz4j.validacao.ValidadorXsd;
+import net.accellog.sefaz4j.webservice.GzipBase64;
 import net.accellog.sefaz4j.webservice.RespostaSefaz;
 import net.accellog.sefaz4j.webservice.RespostaSefazParser;
 import net.accellog.sefaz4j.webservice.SefazHttpClient;
@@ -67,7 +68,11 @@ public final class Sefaz4jCTe {
 
         Document documento = montarDocumento(cte);
 
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), CTE_NAMESPACE, "infCte", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
+        // prefixoAssinatura="" (em vez do "ds:" default do Apache Santuario): confirmado
+        // empiricamente contra a SEFAZ-PR (homologação) que a mesma regra da NFS-e/SEFIN
+        // Nacional (E1228) também vale aqui -- sem isso, a SEFAZ rejeita com cStat 598 ("Usar
+        // somente o namespace padrao do CTe"), mesmo com o CTe/infCte já sem prefixo.
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), CTE_NAMESPACE, "infCte", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1, "");
 
         String xmlAssinado = serializarDocumento(documento);
 
@@ -234,7 +239,11 @@ public final class Sefaz4jCTe {
             ? config.getUrlAutorizacaoOverride()
             : EndpointResolver.resolver(CTE_SERVICOS_INI, PREFIXO_SECAO_CTE, config.getUf(), config.getAmbiente(), Servico.CTE_RECEPCAO_SINC.getChaveIni());
 
-        String envelope = SoapEnvelopeBuilder.envelopeRecepcaoSinc(xmlAssinado);
+        // O MOC do CT-e exige que o conteúdo de cteDadosMsg na recepção síncrona venha
+        // compactado em gzip e codificado em Base64 (diferente das demais operações, que
+        // trafegam XML puro) -- sem isso a SEFAZ responde cStat 244 "Falha na descompactação
+        // da área de dados", mesmo com o XML assinado e válido contra a XSD.
+        String envelope = SoapEnvelopeBuilder.envelopeRecepcaoSinc(GzipBase64.comprimirECodificar(xmlAssinado));
         String respostaBruta = SefazHttpClient.postar(
             url,
             "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoSincV4/cteRecepcao\"",

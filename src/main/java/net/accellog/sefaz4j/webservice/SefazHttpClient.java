@@ -2,8 +2,11 @@ package net.accellog.sefaz4j.webservice;
 
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.X509TrustManager;
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -11,6 +14,9 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.security.MessageDigest;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,7 +35,63 @@ public final class SefazHttpClient {
     private static final ConcurrentHashMap<String, SSLContext> SSL_CONTEXT_CACHE = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, HttpClient> HTTP_CLIENT_CACHE = new ConcurrentHashMap<>();
 
+    // Praticamente todos os webservices tradicionais da SEFAZ (CTe/MDFe/NFe -- diferente da
+    // NFSe Padrão Nacional, que roda atrás de um certificado GlobalSign convencional) usam
+    // certificados emitidos sob a hierarquia ICP-Brasil. O cacerts padrão do OpenJDK NÃO
+    // inclui a raiz "Autoridade Certificadora Raiz Brasileira v10" (ITI) -- só CAs comerciais
+    // globais -- então o TrustManager default falha com PKIX path building failed mesmo
+    // contra um endpoint de homologação legítimo. Corrigido mesclando essa raiz (empacotada
+    // em certs/icp-brasil-raiz-v10.pem, exportada de uma instalação Windows onde ela já era
+    // confiável) ao trust store padrão da JVM, em vez de usar TrustManager nulo (=default).
+    private static volatile TrustManager[] trustManagersComIcpBrasil;
+
     private SefazHttpClient() {
+    }
+
+    private static TrustManager[] trustManagersComIcpBrasil() throws Exception {
+        TrustManager[] cache = trustManagersComIcpBrasil;
+        if (cache != null) {
+            return cache;
+        }
+
+        synchronized (SefazHttpClient.class) {
+            if (trustManagersComIcpBrasil != null) {
+                return trustManagersComIcpBrasil;
+            }
+
+            // Carrega o trust store padrão da JVM (mesmo obtido implicitamente por
+            // sslContext.init(..., null, ...)) para preservar as CAs comerciais globais.
+            TrustManagerFactory tmfPadrao = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            tmfPadrao.init((KeyStore) null);
+            X509TrustManager tmPadrao = null;
+            for (TrustManager tm : tmfPadrao.getTrustManagers()) {
+                if (tm instanceof X509TrustManager x509) {
+                    tmPadrao = x509;
+                    break;
+                }
+            }
+
+            KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
+            trustStore.load(null, null);
+            if (tmPadrao != null) {
+                int i = 0;
+                for (X509Certificate cert : tmPadrao.getAcceptedIssuers()) {
+                    trustStore.setCertificateEntry("jdk-default-" + (i++), cert);
+                }
+            }
+
+            CertificateFactory certFactory = CertificateFactory.getInstance("X.509");
+            try (InputStream in = SefazHttpClient.class.getResourceAsStream("/certs/icp-brasil-raiz-v10.pem")) {
+                Certificate raizIcpBrasil = certFactory.generateCertificate(in);
+                trustStore.setCertificateEntry("icp-brasil-raiz-v10", raizIcpBrasil);
+            }
+
+            TrustManagerFactory tmfCombinado = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            tmfCombinado.init(trustStore);
+
+            trustManagersComIcpBrasil = tmfCombinado.getTrustManagers();
+            return trustManagersComIcpBrasil;
+        }
     }
 
     public static String postar(
@@ -142,7 +204,7 @@ public final class SefazHttpClient {
         // "TLS" (em vez de "TLSv1.2" fixo) deixa a JVM negociar a melhor
         // versão mutuamente suportada com o servidor da SEFAZ.
         SSLContext sslContext = SSLContext.getInstance("TLS");
-        sslContext.init(kmf.getKeyManagers(), null, null);
+        sslContext.init(kmf.getKeyManagers(), trustManagersComIcpBrasil(), null);
         return sslContext;
     }
 }

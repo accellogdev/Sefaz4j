@@ -16,6 +16,14 @@ import java.security.cert.X509Certificate;
 public final class AssinadorXml {
 
     static {
+        // Sem isso, o Apache Santuario quebra o Base64 de SignatureValue/X509Certificate em
+        // linhas de 76 colunas separadas por CRLF (System.lineSeparator(), "\r\n" no Windows) --
+        // o "\r" embutido no texto é serializado como entidade "&#13;" no XML. A SEFAZ (ao menos
+        // o autorizador de CT-e da SEFAZ-PR, em homologação) rejeita isso com cStat 298
+        // ("Assinatura difere do padrao do Projeto"), mesmo com a assinatura estruturalmente e
+        // criptograficamente correta. Precisa ser setado ANTES de Init.init() (JIRA
+        // SANTUARIO-482/494/525) para valer para toda assinatura deste processo.
+        System.setProperty("org.apache.xml.security.ignoreLineBreaks", "true");
         Init.init();
     }
 
