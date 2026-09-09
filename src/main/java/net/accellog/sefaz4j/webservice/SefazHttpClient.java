@@ -102,6 +102,44 @@ public final class SefazHttpClient {
         String senha,
         Duration timeout
     ) {
+        HttpResponse<String> response = enviarPost(url, contentType, corpo, pfxBytes, senha, timeout);
+        if (response.statusCode() / 100 != 2) {
+            throw new ComunicacaoException("SEFAZ retornou HTTP " + response.statusCode() + ": " + response.body(), null);
+        }
+        return response.body();
+    }
+
+    /**
+     * Mesmo transporte de {@link #postar}, mas devolve o corpo da resposta INDEPENDENTE do
+     * status HTTP, em vez de lançar {@link ComunicacaoException} fora da faixa 2xx.
+     *
+     * <p>Uso: SEFIN Nacional (NFS-e) — ao contrário dos webservices SOAP tradicionais
+     * (NFe/CTe/MDFe, onde um status HTTP não-2xx é mesmo falha de transporte e a rejeição de
+     * negócio chega dentro de um corpo 200 com cStat≠100), a API REST da NFS-e devolve
+     * REJEIÇÃO DE NEGÓCIO (ex.: E0014 "DPS já existe") como HTTP 400 com um corpo JSON
+     * perfeitamente válido — lançar exceção nesse caso descarta esse corpo (e, por
+     * consequência, o XML enviado, que só o chamador tem em mãos) em vez de deixar
+     * {@code RespostaNFSeParser} interpretá-lo como a rejeição estruturada que ele é.</p>
+     */
+    public static String postarAceitandoQualquerStatus(
+        String url,
+        String contentType,
+        String corpo,
+        byte[] pfxBytes,
+        String senha,
+        Duration timeout
+    ) {
+        return enviarPost(url, contentType, corpo, pfxBytes, senha, timeout).body();
+    }
+
+    private static HttpResponse<String> enviarPost(
+        String url,
+        String contentType,
+        String corpo,
+        byte[] pfxBytes,
+        String senha,
+        Duration timeout
+    ) {
         try {
             String chaveCertificado = chaveCertificado(pfxBytes, senha);
             SSLContext sslContext = SSL_CONTEXT_CACHE.computeIfAbsent(chaveCertificado, k -> {
@@ -127,11 +165,7 @@ public final class SefazHttpClient {
                 .POST(HttpRequest.BodyPublishers.ofString(corpo))
                 .build();
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() / 100 != 2) {
-                throw new ComunicacaoException("SEFAZ retornou HTTP " + response.statusCode() + ": " + response.body(), null);
-            }
-            return response.body();
+            return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         } catch (ComunicacaoException e) {
             throw e;
         } catch (Exception e) {

@@ -220,8 +220,10 @@ public final class Sefaz4jNFSe {
         String url = (config.getUrlOverride() != null ? config.getUrlOverride() : baseUrlEmissao(config))
             + "/" + chaveAcesso + "/eventos";
 
+        // Mesmo motivo do envio principal (ver enviarEProcessar): rejeição de negócio chega como
+        // HTTP não-2xx com corpo JSON válido.
         String corpoJson = PayloadCompactado.montarRequisicaoJson(CAMPO_JSON_EVENTO, xmlEventoAssinado);
-        String respostaBruta = SefazHttpClient.postar(
+        String respostaBruta = SefazHttpClient.postarAceitandoQualquerStatus(
             url,
             "application/json",
             corpoJson,
@@ -288,8 +290,13 @@ public final class Sefaz4jNFSe {
             ? config.getUrlOverride()
             : baseUrlEmissao(config);
 
+        // postarAceitandoQualquerStatus (não postar): o SEFIN Nacional devolve rejeição de
+        // negócio (ex.: E0014 "DPS já existe") como HTTP 400 com corpo JSON válido — usar
+        // postar() aqui jogaria fora esse corpo (e o xmlAssinado do ResultadoEmissao abaixo)
+        // numa ComunicacaoException, escondendo tanto a mensagem de erro real quanto o XML
+        // enviado.
         String corpoJson = PayloadCompactado.montarRequisicaoJson("dpsXmlGZipB64", xmlAssinado);
-        String respostaBruta = SefazHttpClient.postar(
+        String respostaBruta = SefazHttpClient.postarAceitandoQualquerStatus(
             url,
             "application/json",
             corpoJson,
@@ -301,11 +308,11 @@ public final class Sefaz4jNFSe {
         RespostaNFSe resposta = RespostaNFSeParser.parsear(respostaBruta, "nfseXmlGZipB64");
 
         if (!resposta.isSucesso()) {
-            return new ResultadoEmissao(false, resposta.getCodigoErro(), resposta.getMensagemErro(), null, null);
+            return new ResultadoEmissao(false, resposta.getCodigoErro(), resposta.getMensagemErro(), null, xmlAssinado, null);
         }
 
         String cStat = extrairTextoDoElemento(resposta.getXmlDescomprimido(), "cStat");
-        return new ResultadoEmissao(CSTAT_SUCESSO.contains(cStat), cStat, null, resposta.getChaveAcesso(), resposta.getXmlDescomprimido());
+        return new ResultadoEmissao(CSTAT_SUCESSO.contains(cStat), cStat, null, resposta.getChaveAcesso(), xmlAssinado, resposta.getXmlDescomprimido());
     }
 
     static String baseUrlEmissao(Sefaz4jConfig config) {
