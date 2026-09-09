@@ -5,6 +5,26 @@ public final class SoapEnvelopeBuilder {
     private SoapEnvelopeBuilder() {
     }
 
+    /**
+     * MDFeRecepcaoSinc (recepção síncrona, substitui MDFeRecepcao/MDFeRetRecepcao — ver
+     * comentário em {@code mdfe-servicos.ini}). Mesmo padrão de
+     * {@code net.accellog.sefaz4j.cte.webservice.SoapEnvelopeBuilder#envelopeRecepcaoSinc}: o
+     * conteúdo de {@code mdfeDadosMsg} precisa vir comprimido em gzip e codificado em Base64
+     * (confirmado no MOC do MDF-e/CONFAZ) — {@code mdfeDadosComprimido} já deve chegar pronto
+     * (ver {@code net.accellog.sefaz4j.webservice.GzipBase64}), este método só monta o envelope.
+     */
+    public static String envelopeRecepcaoSinc(String mdfeDadosComprimido) {
+        return "<soap12:Envelope xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" " +
+            "xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" " +
+            "xmlns:soap12=\"http://www.w3.org/2003/05/soap-envelope\">" +
+            "<soap12:Body>" +
+            "<mdfeDadosMsg xmlns=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeRecepcaoSinc\">" +
+            mdfeDadosComprimido +
+            "</mdfeDadosMsg>" +
+            "</soap12:Body>" +
+            "</soap12:Envelope>";
+    }
+
     public static String envelopeRecepcao(String mdfeXmlAssinado, long idLote) {
         return "<soap12:Envelope xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" " +
             "xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" " +

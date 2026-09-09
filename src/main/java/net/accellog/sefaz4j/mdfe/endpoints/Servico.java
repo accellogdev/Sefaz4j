@@ -1,6 +1,9 @@
 package net.accellog.sefaz4j.mdfe.endpoints;
 
 public enum Servico {
+    // MDFeRecepcao/MDFeRetRecepcao (lote assíncrono) foram descontinuados pela SVRS -- ver
+    // MDFE_RECEPCAO_SINC, único usado por Sefaz4jMDFe.enviarEProcessar desde 2026-09.
+    MDFE_RECEPCAO_SINC("MDFeRecepcaoSinc_3.00"),
     MDFE_RECEPCAO("MDFeRecepcao_3.00"),
     MDFE_RET_RECEPCAO("MDFeRetRecepcao_3.00"),
     MDFE_CONSULTA_PROTOCOLO("MDFeConsultaProtocolo_3.00"),

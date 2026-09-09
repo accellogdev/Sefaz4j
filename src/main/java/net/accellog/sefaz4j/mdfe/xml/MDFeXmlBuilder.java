@@ -1,5 +1,6 @@
 package net.accellog.sefaz4j.mdfe.xml;
 
+import com.sun.xml.bind.marshaller.NamespacePrefixMapper;
 import net.accellog.sefaz4j.chave.ChaveAcessoCalculator;
 import net.accellog.sefaz4j.mdfe.model.ObjectFactory;
 import net.accellog.sefaz4j.mdfe.model.TMDFe;
@@ -19,6 +20,8 @@ import javax.xml.parsers.DocumentBuilderFactory;
  */
 public final class MDFeXmlBuilder {
 
+    private static final String MDFE_NAMESPACE = "http://www.portalfiscal.inf.br/mdfe";
+
     private MDFeXmlBuilder() {
     }
 
@@ -31,11 +34,40 @@ public final class MDFeXmlBuilder {
 
         JAXBContext contexto = JAXBContext.newInstance(TMDFe.class);
         Marshaller marshaller = contexto.createMarshaller();
+        // Mesmo fix de CTeXmlBuilder (confirmado empiricamente contra a SEFAZ real: cStat 598
+        // "Usar somente o namespace padrao do CTe" era o mesmo problema para o CT-e) -- sem
+        // mapper, o JAXB marshalla com prefixo gerado (ns2:) em vez de default namespace.
+        marshaller.setProperty("com.sun.xml.bind.namespacePrefixMapper", new NamespacePrefixMapper() {
+            @Override
+            public String getPreferredPrefix(String namespaceUri, String suggestion, boolean requirePrefix) {
+                return MDFE_NAMESPACE.equals(namespaceUri) ? "" : suggestion;
+            }
+        });
         ObjectFactory fabrica = new ObjectFactory();
         JAXBElement<TMDFe> elementoRaiz = fabrica.createMDFe(mdfe);
         marshaller.marshal(elementoRaiz, documento);
 
+        removerDeclaracaoNamespaceOrfaDoXmldsig(documento);
+
         return documento;
+    }
+
+    /**
+     * {@code TMDFe.InfMDFe.signature} (ds:Signature) fica sempre nulo aqui -- a assinatura real
+     * é inserida depois via DOM por {@code AssinadorXml}. Mesmo assim o JAXB RI pré-declara o
+     * namespace do xmldsig como {@code xmlns:ns2} órfão na raiz do MDFe -- mesmo padrão de
+     * {@code CTeXmlBuilder}/{@code DpsXmlBuilder}.
+     */
+    private static void removerDeclaracaoNamespaceOrfaDoXmldsig(Document documento) {
+        org.w3c.dom.Element raiz = documento.getDocumentElement();
+        org.w3c.dom.NamedNodeMap atributos = raiz.getAttributes();
+        for (int i = atributos.getLength() - 1; i >= 0; i--) {
+            org.w3c.dom.Attr atributo = (org.w3c.dom.Attr) atributos.item(i);
+            if (javax.xml.XMLConstants.XMLNS_ATTRIBUTE_NS_URI.equals(atributo.getNamespaceURI())
+                && "http://www.w3.org/2000/09/xmldsig#".equals(atributo.getValue())) {
+                raiz.removeAttributeNode(atributo);
+            }
+        }
     }
 
     private static void injetarChaveEIdSeAusente(TMDFe mdfe) {

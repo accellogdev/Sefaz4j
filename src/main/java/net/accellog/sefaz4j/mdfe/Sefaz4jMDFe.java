@@ -10,6 +10,7 @@ import net.accellog.sefaz4j.mdfe.xml.EventoMDFeXmlBuilder;
 import net.accellog.sefaz4j.mdfe.xml.MDFeXmlBuilder;
 import net.accellog.sefaz4j.validacao.ValidadorXsd;
 import net.accellog.sefaz4j.webservice.ComunicacaoException;
+import net.accellog.sefaz4j.webservice.GzipBase64;
 import net.accellog.sefaz4j.webservice.RespostaSefaz;
 import net.accellog.sefaz4j.webservice.RespostaSefazParser;
 import net.accellog.sefaz4j.webservice.SefazHttpClient;
@@ -50,7 +51,7 @@ public final class Sefaz4jMDFe {
     private static final String EV_CANC_MDFE_XSD = "/schemas/mdfe/evCancMDFe_v3.00.xsd";
     private static final String EV_ENC_MDFE_XSD = "/schemas/mdfe/evEncMDFe_v3.00.xsd";
     private static final String EV_INC_CONDUTOR_MDFE_XSD = "/schemas/mdfe/evIncCondutorMDFe_v3.00.xsd";
-    private static final String CONTENT_TYPE_RECEPCAO = "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeRecepcao/mdfeRecepcaoLote\"";
+    private static final String CONTENT_TYPE_RECEPCAO = "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeRecepcaoSinc/mdfeRecepcaoSinc\"";
     private static final String CONTENT_TYPE_CONSULTA = "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeConsulta/mdfeConsultaMDF\"";
     private static final String CONTENT_TYPE_RECEPCAO_EVENTO = "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeRecepcaoEvento/mdfeRecepcaoEvento\"";
 
@@ -66,7 +67,10 @@ public final class Sefaz4jMDFe {
 
         Document documento = montarDocumento(mdfe);
 
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), MDFE_NAMESPACE, "infMDFe", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
+        // prefixoAssinatura="" (em vez do "ds:" default do Apache Santuario): mesma exigência já
+        // confirmada empiricamente para CT-e-PR (cStat 598) e NFS-e (E1228) — a suposição antiga
+        // de que "NFe/CTe/MDFe aceitam ds: normalmente" nunca tinha sido testada de verdade.
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), MDFE_NAMESPACE, "infMDFe", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1, "");
 
         String xmlAssinado = serializarDocumento(documento);
 
@@ -232,9 +236,13 @@ public final class Sefaz4jMDFe {
 
         String urlRecepcao = config.getUrlRecepcaoOverride() != null
             ? config.getUrlRecepcaoOverride()
-            : EndpointResolver.resolver(MDFE_SERVICOS_INI, PREFIXO_SECAO_MDFE, config.getUf(), config.getAmbiente(), Servico.MDFE_RECEPCAO.getChaveIni());
+            : EndpointResolver.resolver(MDFE_SERVICOS_INI, PREFIXO_SECAO_MDFE, config.getUf(), config.getAmbiente(), Servico.MDFE_RECEPCAO_SINC.getChaveIni());
 
-        String envelope = SoapEnvelopeBuilder.envelopeRecepcao(xmlAssinado, 1L);
+        // MDFeRecepcaoSinc (recepção síncrona) substitui MDFeRecepcao (lote assíncrono, que
+        // respondeu HTTP 404 ao testar de verdade contra a SVRS em 2026-09-09 — parece
+        // descontinuado). O MOC do MDF-e exige o conteúdo de mdfeDadosMsg comprimido em gzip e
+        // codificado em Base64, mesmo padrão já confirmado para CTeRecepcaoSincV4.
+        String envelope = SoapEnvelopeBuilder.envelopeRecepcaoSinc(GzipBase64.comprimirECodificar(xmlAssinado));
         String respostaBruta = SefazHttpClient.postar(
             urlRecepcao,
             CONTENT_TYPE_RECEPCAO,
