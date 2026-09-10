@@ -297,6 +297,70 @@ public class Sefaz4jNFSeTest {
         Sefaz4jNFSe.consultarSituacao(config, "chave-muito-curta");
     }
 
+    // 42 dígitos: cLocEmi(7)+tpInsc(1)+inscricao(14)+serie(5)+nDPS(15), sem o prefixo "DPS" — o
+    // mesmo valor que NFSeProcessor.enviarNFSe grava em doe_chave (ver DpsIdCalculator).
+    private static final String ID_DPS_VALIDO_42_DIGITOS = "355030821234567800019500001100000000000123";
+
+    /**
+     * {@code GET /dps/{id}} (API DPS do Manual dos Contribuintes - Sistema Nacional NFS-e, seção
+     * 1.4): recupera a chaveAcesso de 50 posições da NFS-e a partir do Id de 42 dígitos da DPS —
+     * o passo que falta para {@code consultarSituacao}/{@code cancelar} poderem ser chamados a
+     * partir do que o bot grava em {@code doe_chave} (só o Id da DPS, nunca a chaveAcesso).
+     */
+    @Test
+    public void consultarChavePorDpsRetornaAChaveDeAcessoDaNfse() {
+        servidor.createContext("/dps", exchange -> {
+            String corpoJson = "{\"chaveAcesso\":\"" + CHAVE_ACESSO_VALIDA_50_CHARS + "\"}";
+            byte[] resposta = corpoJson.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, pfxBytes, "teste123");
+        config.setUrlOverride("https://localhost:" + servidor.getAddress().getPort() + "/dps");
+
+        String chaveAcesso = Sefaz4jNFSe.consultarChavePorDps(config, ID_DPS_VALIDO_42_DIGITOS);
+
+        assertEquals(CHAVE_ACESSO_VALIDA_50_CHARS, chaveAcesso);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void consultarChavePorDpsRejeitaIdComTamanhoDiferenteDe42Digitos() {
+        Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, pfxBytes, "teste123");
+
+        Sefaz4jNFSe.consultarChavePorDps(config, "123");
+    }
+
+    /**
+     * {@code erros} sem {@code chaveAcesso} — DPS inexistente, NFS-e ainda não gerada, ou sigilo
+     * fiscal (o solicitante não é ator da NFS-e) — vira falha explícita, não {@code null} silencioso,
+     * porque não há {@code isOk()} aqui para o chamador checar (diferente de consultarSituacao/
+     * cancelar): sem a chaveAcesso não há como prosseguir.
+     */
+    @Test
+    public void consultarChavePorDpsLancaExcecaoQuandoNfseAindaNaoFoiGerada() {
+        servidor.createContext("/dps-pendente", exchange -> {
+            String corpoJson = "{\"erros\":[{\"Codigo\":\"E404\",\"Descricao\":\"DPS nao encontrada ou NFSe ainda nao gerada\"}]}";
+            byte[] resposta = corpoJson.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, pfxBytes, "teste123");
+        config.setUrlOverride("https://localhost:" + servidor.getAddress().getPort() + "/dps-pendente");
+
+        try {
+            Sefaz4jNFSe.consultarChavePorDps(config, ID_DPS_VALIDO_42_DIGITOS);
+            org.junit.Assert.fail("deveria ter lancado excecao");
+        } catch (IllegalStateException e) {
+            assertTrue(e.getMessage().contains("DPS nao encontrada ou NFSe ainda nao gerada"));
+        }
+    }
+
     /**
      * Mesma cobertura que {@link #enviarXmlAssinadoRetornaOkParaTodosOsCStatDeSucesso()}, mas para
      * {@code consultarSituacao} (GET) — prova que o mesmo conjunto CSTAT_SUCESSO (102/103/107, além

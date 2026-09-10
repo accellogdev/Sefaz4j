@@ -52,6 +52,12 @@ public final class Sefaz4jNFSe {
     private static final String ALGORITMO_DIGEST = MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA256;
     private static final String URL_PRODUCAO = "https://sefin.nfse.gov.br/sefinnacional/nfse";
     private static final String URL_HOMOLOGACAO = "https://sefin.producaorestrita.nfse.gov.br/SefinNacional/nfse";
+    // API DPS (Manual dos Contribuintes - Sistema Nacional NFS-e, seção 1.4): GET /dps/{id}
+    // recupera a chaveAcesso de 50 posições da NFS-e a partir do Id de 42 dígitos da DPS. É um
+    // recurso irmão de /nfse, não um sub-recurso dele -- daí a base própria em vez de reaproveitar
+    // URL_PRODUCAO/URL_HOMOLOGACAO.
+    private static final String URL_DPS_PRODUCAO = "https://sefin.nfse.gov.br/sefinnacional/dps";
+    private static final String URL_DPS_HOMOLOGACAO = "https://sefin.producaorestrita.nfse.gov.br/SefinNacional/dps";
     // Portal de Consulta Pública do SEFIN Nacional -- usado como "link de autenticidade" no
     // DANFSe (texto + QR code). Diferente da URL de transmissão acima (sefin.*), é um domínio
     // e formato de URL completamente separados (mesmo padrão do bot Delphi legado, que lia
@@ -64,6 +70,18 @@ public final class Sefaz4jNFSe {
     // ao contrário da NFe/CTe, este cStat classifica o TIPO de sucesso, não autorização-vs-rejeição;
     // rejeição de negócio de fato chega pelo array JSON "erros", já tratado acima por !isSucesso().
     private static final java.util.Set<String> CSTAT_SUCESSO = java.util.Set.of("100", "102", "103", "107");
+    // TCInfNFSe NÃO tem um "xMotivo" companheiro do cStat na resposta de sucesso (diferente de
+    // NFe/CTe/MDFe, cujo protNFe/infProt traz os dois) -- sem isso, doe_retorno_motivo ficava
+    // sempre NULL numa autorização (só o motivo de ERRO era gravado, via getMensagemErro()), e o
+    // bot Delphi legado (nfse_v210.pas) sempre hardcodeava exatamente "Autorizado o uso da NFSe"
+    // para cStat 100 mesmo antes desta migração -- mantido aqui para não quebrar telas/relatórios
+    // que já esperam esse texto literal.
+    private static final java.util.Map<String, String> DESCRICAO_CSTAT_SUCESSO = java.util.Map.of(
+        "100", "Autorizado o uso da NFSe",
+        "102", "Autorizado o uso da NFSe - Decisão Judicial",
+        "103", "Autorizado o uso da NFSe Avulsa",
+        "107", "Autorizado o uso da NFSe - MEI"
+    );
 
     private Sefaz4jNFSe() {
     }
@@ -98,7 +116,46 @@ public final class Sefaz4jNFSe {
         }
 
         String cStat = extrairTextoDoElemento(resposta.getXmlDescomprimido(), "cStat");
-        return new ResultadoConsulta(CSTAT_SUCESSO.contains(cStat), cStat, null, resposta.getChaveAcesso(), resposta.getXmlDescomprimido());
+        return new ResultadoConsulta(CSTAT_SUCESSO.contains(cStat), cStat, DESCRICAO_CSTAT_SUCESSO.get(cStat), resposta.getChaveAcesso(), resposta.getXmlDescomprimido());
+    }
+
+    /**
+     * Recupera a chaveAcesso (50 posições) da NFS-e a partir do Id de 42 dígitos da DPS (API DPS,
+     * {@code GET /dps/{id}} -- ver seção 1.4 do Manual dos Contribuintes do Sistema Nacional
+     * NFS-e). Necessário porque {@code doe_chave} (bot-sefaz) só guarda o Id da DPS -- nunca a
+     * chaveAcesso --, mas {@link #consultarSituacao}/{@link #cancelar} exigem a chaveAcesso de 50
+     * caracteres.
+     *
+     * <p>ATENÇÃO: formato do corpo de resposta e códigos HTTP de erro (DPS inexistente, NFS-e
+     * ainda não gerada, ou sigilo fiscal -- solicitante não é ator da NFS-e) NÃO confirmados
+     * contra o Manual de Integração nem testados contra Homologação -- só o formato de sucesso
+     * ({@code {"chaveAcesso": "..."}}) é inferido da mesma convenção JSON usada por
+     * {@code enviarEProcessar}/{@code consultarSituacao}.</p>
+     *
+     * @throws IllegalStateException se a resposta não trouxer uma chaveAcesso (erro de negócio,
+     *         DPS ainda sem NFS-e gerada, ou acesso negado por sigilo fiscal)
+     */
+    public static String consultarChavePorDps(Sefaz4jConfig config, String idDps) {
+        exigirIdDpsValido(idDps);
+
+        String url = (config.getUrlOverride() != null ? config.getUrlOverride() : baseUrlDps(config)) + "/" + idDps;
+
+        String respostaBruta = SefazHttpClient.buscar(url, config.getPfxBytes(), config.getSenhaPfx(), config.getTimeout());
+
+        RespostaNFSe resposta = RespostaNFSeParser.parsear(respostaBruta, "");
+
+        if (!resposta.isSucesso()) {
+            throw new IllegalStateException(
+                "Nao foi possivel obter a chaveAcesso da NFSe para o DPS " + idDps + ": " + resposta.getMensagemErro()
+            );
+        }
+        if (resposta.getChaveAcesso() == null) {
+            throw new IllegalStateException(
+                "SEFIN Nacional nao devolveu chaveAcesso para o DPS " + idDps
+            );
+        }
+
+        return resposta.getChaveAcesso();
     }
 
     /**
@@ -280,6 +337,22 @@ public final class Sefaz4jNFSe {
         }
     }
 
+    // TSIdDPS sem o prefixo "DPS": cLocEmi(7)+tpInsc(1)+inscricao(14)+serie(5)+nDPS(15) = 42
+    // dígitos -- exatamente o valor que DpsIdCalculator calcula e que doe_chave (bot-sefaz) grava.
+    private static void exigirIdDpsValido(String idDps) {
+        if (idDps == null || !idDps.matches("[0-9]{42}")) {
+            throw new IllegalArgumentException(
+                "O campo 'idDps' deve ter exatamente 42 dígitos numéricos, obteve: '" + idDps + "'"
+            );
+        }
+    }
+
+    private static String baseUrlDps(Sefaz4jConfig config) {
+        return config.getAmbiente() == net.accellog.sefaz4j.endpoints.Ambiente.PRODUCAO
+            ? URL_DPS_PRODUCAO
+            : URL_DPS_HOMOLOGACAO;
+    }
+
     private static Document montarDocumento(TCDPS dps) {
         try {
             return DpsXmlBuilder.marcarIdEMontarDocumento(dps);
@@ -323,7 +396,7 @@ public final class Sefaz4jNFSe {
         }
 
         String cStat = extrairTextoDoElemento(resposta.getXmlDescomprimido(), "cStat");
-        return new ResultadoEmissao(CSTAT_SUCESSO.contains(cStat), cStat, null, resposta.getChaveAcesso(), resposta.getXmlDescomprimido());
+        return new ResultadoEmissao(CSTAT_SUCESSO.contains(cStat), cStat, DESCRICAO_CSTAT_SUCESSO.get(cStat), resposta.getChaveAcesso(), resposta.getXmlDescomprimido());
     }
 
     static String baseUrlEmissao(Sefaz4jConfig config) {
