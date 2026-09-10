@@ -1,5 +1,8 @@
 package net.accellog.sefaz4j.webservice;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
@@ -22,6 +25,8 @@ import java.util.Base64;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class SefazHttpClient {
+
+    private static final Logger LOGGER = LogManager.getLogger(SefazHttpClient.class);
 
     // Construir o SSLContext (carregar o PKCS12 + inicializar o
     // KeyManagerFactory) é caro e, como java.net.http.HttpClient não é
@@ -165,7 +170,10 @@ public final class SefazHttpClient {
                 .POST(HttpRequest.BodyPublishers.ofString(corpo))
                 .build();
 
-            return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            logarRequisicao("POST", request, corpo);
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            logarResposta(response);
+            return response;
         } catch (ComunicacaoException e) {
             throw e;
         } catch (Exception e) {
@@ -198,7 +206,9 @@ public final class SefazHttpClient {
                 .GET()
                 .build();
 
+            logarRequisicao("GET", request, null);
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            logarResposta(response);
             if (response.statusCode() / 100 != 2) {
                 throw new ComunicacaoException("SEFAZ retornou HTTP " + response.statusCode() + ": " + response.body(), null);
             }
@@ -207,6 +217,35 @@ public final class SefazHttpClient {
             throw e;
         } catch (Exception e) {
             throw new ComunicacaoException("Falha de comunicação com a SEFAZ em " + url, e);
+        }
+    }
+
+    /**
+     * Log em DEBUG (resumo: metodo/url/corpo) para toda chamada a SEFAZ, de qualquer tipo de
+     * documento (NFe/CTe/MDFe/NFSe passam todos por aqui) -- pedido explicito do usuario para dar
+     * visibilidade ao processo de envio sem precisar do nivel TRACE. Em TRACE, alem disso, imprime
+     * um bloco no estilo do interceptor OkHttp (linha de requisicao + cada header) que ja existe em
+     * AccellogREST -- mesma verbosidade, agora tambem para as chamadas SOAP/REST da SEFAZ.
+     */
+    private static void logarRequisicao(String metodo, HttpRequest request, String corpo) {
+        LOGGER.debug("SEFAZ --> {} {}", metodo, request.uri());
+        if (corpo != null) {
+            LOGGER.debug("SEFAZ --> corpo: {}", corpo);
+        }
+        if (LOGGER.isTraceEnabled()) {
+            request.headers().map().forEach((nome, valores) ->
+                LOGGER.trace("SEFAZ --> {}: {}", nome, String.join(", ", valores)));
+            LOGGER.trace("SEFAZ --> END {}", metodo);
+        }
+    }
+
+    private static void logarResposta(HttpResponse<String> response) {
+        LOGGER.debug("SEFAZ <-- HTTP {} {}", response.statusCode(), response.uri());
+        LOGGER.debug("SEFAZ <-- corpo: {}", response.body());
+        if (LOGGER.isTraceEnabled()) {
+            response.headers().map().forEach((nome, valores) ->
+                LOGGER.trace("SEFAZ <-- {}: {}", nome, String.join(", ", valores)));
+            LOGGER.trace("SEFAZ <-- END HTTP");
         }
     }
 
