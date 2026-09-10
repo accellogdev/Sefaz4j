@@ -34,20 +34,27 @@ public final class Sefaz4jNFSe {
     private static final String NFSE_NAMESPACE = "http://www.sped.fazenda.gov.br/nfse";
     private static final String DPS_XSD_RAIZ = "/schemas/nfse/DPS_v1.01.xsd";
     private static final String PED_REG_EVENTO_XSD_RAIZ = "/schemas/nfse/pedRegEvento_v1.01.xsd";
-    private static final String EVENTO_XSD_RAIZ = "/schemas/nfse/evento_v1.01.xsd";
-    // ATENÇÃO: nome do campo JSON NÃO confirmado contra o Manual de Integração do SEFIN Nacional nem
-    // testado contra Homologação — é uma inferência da convenção de nomes já observada em
-    // "dpsXmlGZipB64"/"nfseXmlGZipB64". Mesma ressalva de ALGORITMO_ASSINATURA/ALGORITMO_DIGEST
-    // abaixo: se a Homologação real rejeitar, troque só esta constante. Vale para a requisição e
-    // para o campo lido na resposta.
-    private static final String CAMPO_JSON_EVENTO = "eventoXmlGZipB64";
+    // Nomes de campo JSON CONFIRMADOS 2026-09-10 contra o código-fonte do ACBr (implementação de
+    // referência, testada com sucesso real em Homologação no mesmo dia) —
+    // TACBrNFSeProviderPadraoNacional.PrepararArquivoEnvio/TratarRetornoEnviarEvento em
+    // PadraoNacional.Provider.pas. São DOIS campos DIFERENTES, não um só como o palpite original
+    // desta biblioteca assumia: o pedido de registro do evento (requisição) e o evento já
+    // registrado que a ADN devolve (resposta) têm nomes distintos.
+    private static final String CAMPO_JSON_PEDIDO_EVENTO = "pedidoRegistroEventoXmlGZipB64";
+    private static final String CAMPO_JSON_EVENTO_RESPOSTA = "eventoXmlGZipB64";
+    // Algoritmo de assinatura do pedRegEvento/infPedReg (cancelar/cancelarPorSubstituicao) —
+    // CONFIRMADO 2026-09-10 decodificando o payload real transmitido pelo bot Delphi/ACBr (doe_id
+    // 989248, aceito pela SEFAZ): RSA-SHA1/SHA1, a MESMA dupla usada por NFe/CTe/MDFe — não
+    // RSA-SHA256/SHA-256 (ALGORITMO_ASSINATURA/ALGORITMO_DIGEST abaixo, usada só na emissão/infDPS).
+    private static final String ALGORITMO_ASSINATURA_EVENTO = XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1;
+    private static final String ALGORITMO_DIGEST_EVENTO = MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1;
     // TSMotivo (tiposSimples_v1.01.xsd): minLength=15, maxLength=255.
     private static final int TAMANHO_MINIMO_X_MOTIVO = 15;
     private static final int TAMANHO_MAXIMO_X_MOTIVO = 255;
-    // ATENÇÃO: algoritmo NÃO confirmado contra o Manual de Integração do SEFIN Nacional nem
-    // testado empiricamente contra Homologação. RSA-SHA256/SHA-256 é o palpite mais provável
-    // (padrão federal mais recente), não um fato verificado. Se a Homologação real rejeitar a
-    // assinatura, troque só estas duas constantes.
+    // Algoritmo de assinatura do infDPS (emitir) — CONFIRMADO por múltiplas NFS-e realmente
+    // autorizadas em Homologação (produção restrita) assinadas com RSA-SHA256/SHA-256 (ex.: doe_id
+    // 989223/989236, cStat 100 "Autorizado o uso da NFSe"). Diferente do evento (cancelar/
+    // cancelarPorSubstituicao), que usa RSA-SHA1/SHA1 — ver ALGORITMO_ASSINATURA_EVENTO acima.
     private static final String ALGORITMO_ASSINATURA = XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA256;
     private static final String ALGORITMO_DIGEST = MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA256;
     private static final String URL_PRODUCAO = "https://sefin.nfse.gov.br/sefinnacional/nfse";
@@ -109,7 +116,8 @@ public final class Sefaz4jNFSe {
 
         String respostaBruta = SefazHttpClient.buscar(url, config.getPfxBytes(), config.getSenhaPfx(), config.getTimeout());
 
-        RespostaNFSe resposta = RespostaNFSeParser.parsear(respostaBruta, "nfseXmlGZipB64");
+        // status sempre 2xx aqui: SefazHttpClient.buscar ja lanca ComunicacaoException fora dessa faixa.
+        RespostaNFSe resposta = RespostaNFSeParser.parsear(respostaBruta, "nfseXmlGZipB64", 200);
 
         if (!resposta.isSucesso()) {
             return new ResultadoConsulta(false, resposta.getCodigoErro(), resposta.getMensagemErro(), null, null);
@@ -142,7 +150,8 @@ public final class Sefaz4jNFSe {
 
         String respostaBruta = SefazHttpClient.buscar(url, config.getPfxBytes(), config.getSenhaPfx(), config.getTimeout());
 
-        RespostaNFSe resposta = RespostaNFSeParser.parsear(respostaBruta, "");
+        // status sempre 2xx aqui: SefazHttpClient.buscar ja lanca ComunicacaoException fora dessa faixa.
+        RespostaNFSe resposta = RespostaNFSeParser.parsear(respostaBruta, "", 200);
 
         if (!resposta.isSucesso()) {
             throw new IllegalStateException(
@@ -188,27 +197,25 @@ public final class Sefaz4jNFSe {
             tpAmb, cnpjAutor, chaveAcesso, tipoEvento, agora,
             EventoNFSeXmlBuilder.fragmentoCancelamento(String.valueOf(cMotivo), xMotivo)
         );
-        // Validação em duas passadas (mesma convenção do evento de CT-e): o pedRegEvento é declarado
-        // como elemento raiz próprio em pedRegEvento_v1.01.xsd, então é validável isolado ANTES de
-        // ser embutido; o evento completo só valida depois de assinado (TCEvento exige ds:Signature).
+        // pedRegEvento é declarado como elemento raiz próprio em pedRegEvento_v1.01.xsd — validado
+        // isolado antes E depois de assinado (a assinatura só ocupa o slot ds:Signature, minOccurs="0",
+        // que TCPedRegEvt já reserva como irmão de infPedReg).
         ValidadorXsd.validar(pedRegEventoXml, PED_REG_EVENTO_XSD_RAIZ);
 
-        Document documento = EventoNFSeXmlBuilder.envolverEmEvento(chaveAcesso, tipoEvento, agora, pedRegEventoXml);
-        // Só o infEvento externo é assinado — o ds:Signature do pedRegEvento é minOccurs="0" no
-        // TCPedRegEvt e esta biblioteca não o gera.
-        // ATENÇÃO: qual documento o ADN realmente espera receber assinado NÃO está confirmado contra
-        // o Manual de Integração do SEFIN Nacional nem testado contra Homologação — é uma suposição
-        // de que o ADN quer o "evento" completo, assinado na sua assinatura externa/obrigatória
-        // (infEvento), espelhando a convenção de NFe/CTe de assinar o elemento de envelopamento mais
-        // externo. A alternativa não descartada é o ADN querer apenas o "pedRegEvento" isolado,
-        // assinado na sua assinatura interna/opcional (infPedReg — minOccurs="0" no schema). Se a
-        // Homologação real rejeitar esta escolha, a correção é isolada: o builder já separa
-        // montarPedRegEvento/envolverEmEvento, então basta assinar e transmitir o primeiro em vez do
-        // segundo.
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFSE_NAMESPACE, "infEvento", ALGORITMO_ASSINATURA, ALGORITMO_DIGEST, "");
+        // Assina o pedRegEvento DIRETAMENTE no infPedReg — NÃO envelopa em evento/infEvento.
+        // Estrutura E algoritmo CONFIRMADOS 2026-09-10 decodificando o payload real transmitido pelo
+        // bot Delphi/ACBr (doe_id 989248, cancelamento aceito pela SEFAZ): o corpo é exatamente o
+        // pedRegEvento isolado, assinado com RSA-SHA1/SHA1 (a mesma dupla usada por NFe/CTe/MDFe,
+        // ver ALGORITMO_ASSINATURA_EVENTO abaixo) — NÃO RSA-SHA256/SHA-256 (esse é usado só na
+        // assinatura do infDPS, na emissão). O evento/infEvento embutindo esse pedRegEvento (com uma
+        // SEGUNDA assinatura RSA-SHA256 no infEvento) aparece em doe_xmlenvio, mas é o documento que a
+        // própria ADN monta ao REGISTRAR o evento (verAplic="SefinNacional_1.6.0" é a versão do ADN,
+        // não do emissor) — não o que o cliente transmite.
+        Document documento = EventoNFSeXmlBuilder.parsearDocumento(pedRegEventoXml);
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFSE_NAMESPACE, "infPedReg", ALGORITMO_ASSINATURA_EVENTO, ALGORITMO_DIGEST_EVENTO, "");
 
         String xmlEventoAssinado = serializarDocumento(documento);
-        ValidadorXsd.validar(xmlEventoAssinado, EVENTO_XSD_RAIZ);
+        ValidadorXsd.validar(xmlEventoAssinado, PED_REG_EVENTO_XSD_RAIZ);
 
         return transmitirEvento(config, chaveAcesso, xmlEventoAssinado);
     }
@@ -263,31 +270,31 @@ public final class Sefaz4jNFSe {
             tpAmb, cnpjAutor, chaveAntiga, tipoEvento, agora,
             EventoNFSeXmlBuilder.fragmentoSubstituicao(subst.getCMotivo(), subst.getXMotivo(), chaveNova)
         );
-        // Mesma validação em duas passadas de cancelar: pedRegEvento isolado agora, evento completo
-        // só depois de assinado.
+        // Mesma convenção de cancelar: assina o pedRegEvento diretamente no infPedReg, com
+        // RSA-SHA1/SHA1 (ALGORITMO_ASSINATURA_EVENTO), sem envelopar em evento/infEvento — ver o
+        // comentário de cancelar() para a evidência real por trás dessa escolha.
         ValidadorXsd.validar(pedRegEventoXml, PED_REG_EVENTO_XSD_RAIZ);
 
-        Document documento = EventoNFSeXmlBuilder.envolverEmEvento(chaveAntiga, tipoEvento, agora, pedRegEventoXml);
-        // Vale aqui a mesma ressalva registrada em cancelar sobre QUAL documento o ADN espera
-        // receber assinado (evento externo vs. pedRegEvento isolado).
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFSE_NAMESPACE, "infEvento", ALGORITMO_ASSINATURA, ALGORITMO_DIGEST, "");
+        Document documento = EventoNFSeXmlBuilder.parsearDocumento(pedRegEventoXml);
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFSE_NAMESPACE, "infPedReg", ALGORITMO_ASSINATURA_EVENTO, ALGORITMO_DIGEST_EVENTO, "");
 
         String xmlEventoAssinado = serializarDocumento(documento);
-        ValidadorXsd.validar(xmlEventoAssinado, EVENTO_XSD_RAIZ);
+        ValidadorXsd.validar(xmlEventoAssinado, PED_REG_EVENTO_XSD_RAIZ);
 
         return transmitirEvento(config, chaveAntiga, xmlEventoAssinado);
     }
 
     private static ResultadoEvento transmitirEvento(Sefaz4jConfig config, String chaveAcesso, String xmlEventoAssinado) {
-        // ATENÇÃO: caminho não confirmado contra o Manual de Integração do SEFIN Nacional nem testado
-        // contra Homologação.
+        // Caminho CONFIRMADO 2026-09-10 contra a seção 1.5.2(a) do Manual dos Contribuintes
+        // (Sistema Nacional NFS-e) oficial: "POST /nfse/{chaveAcesso}/eventos" — baseUrlEmissao já
+        // termina em ".../nfse", então esta concatenação está correta.
         String url = (config.getUrlOverride() != null ? config.getUrlOverride() : baseUrlEmissao(config))
             + "/" + chaveAcesso + "/eventos";
 
         // Mesmo motivo do envio principal (ver enviarEProcessar): rejeição de negócio chega como
         // HTTP não-2xx com corpo JSON válido.
-        String corpoJson = PayloadCompactado.montarRequisicaoJson(CAMPO_JSON_EVENTO, xmlEventoAssinado);
-        String respostaBruta = SefazHttpClient.postarAceitandoQualquerStatus(
+        String corpoJson = PayloadCompactado.montarRequisicaoJson(CAMPO_JSON_PEDIDO_EVENTO, xmlEventoAssinado);
+        java.net.http.HttpResponse<String> respostaHttp = SefazHttpClient.postarAceitandoQualquerStatus(
             url,
             "application/json",
             corpoJson,
@@ -296,7 +303,7 @@ public final class Sefaz4jNFSe {
             config.getTimeout()
         );
 
-        RespostaNFSe resposta = RespostaNFSeParser.parsear(respostaBruta, CAMPO_JSON_EVENTO);
+        RespostaNFSe resposta = RespostaNFSeParser.parsear(respostaHttp.body(), CAMPO_JSON_EVENTO_RESPOSTA, respostaHttp.statusCode());
 
         if (!resposta.isSucesso()) {
             return new ResultadoEvento(false, resposta.getCodigoErro(), resposta.getMensagemErro(), null);
@@ -376,7 +383,7 @@ public final class Sefaz4jNFSe {
         // numa ComunicacaoException, escondendo tanto a mensagem de erro real quanto o XML
         // enviado.
         String corpoJson = PayloadCompactado.montarRequisicaoJson("dpsXmlGZipB64", xmlAssinado);
-        String respostaBruta = SefazHttpClient.postarAceitandoQualquerStatus(
+        java.net.http.HttpResponse<String> respostaHttp = SefazHttpClient.postarAceitandoQualquerStatus(
             url,
             "application/json",
             corpoJson,
@@ -385,7 +392,7 @@ public final class Sefaz4jNFSe {
             config.getTimeout()
         );
 
-        RespostaNFSe resposta = RespostaNFSeParser.parsear(respostaBruta, "nfseXmlGZipB64");
+        RespostaNFSe resposta = RespostaNFSeParser.parsear(respostaHttp.body(), "nfseXmlGZipB64", respostaHttp.statusCode());
 
         if (!resposta.isSucesso()) {
             // xmlAssinado (nao null) no lugar de xmlAutorizado: para a NFSe, diferente de

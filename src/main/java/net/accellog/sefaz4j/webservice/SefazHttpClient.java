@@ -121,7 +121,7 @@ public final class SefazHttpClient {
      * consequência, o XML enviado, que só o chamador tem em mãos) em vez de deixar
      * {@code RespostaNFSeParser} interpretá-lo como a rejeição estruturada que ele é.</p>
      */
-    public static String postarAceitandoQualquerStatus(
+    public static HttpResponse<String> postarAceitandoQualquerStatus(
         String url,
         String contentType,
         String corpo,
@@ -129,7 +129,7 @@ public final class SefazHttpClient {
         String senha,
         Duration timeout
     ) {
-        return enviarPost(url, contentType, corpo, pfxBytes, senha, timeout).body();
+        return enviarPost(url, contentType, corpo, pfxBytes, senha, timeout);
     }
 
     private static HttpResponse<String> enviarPost(

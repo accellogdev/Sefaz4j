@@ -204,35 +204,61 @@ both request and response (see `net.accellog.sefaz4j.nfse.webservice.PayloadComp
   submission then fails, the new NFS-e exists and the old one remains active — there is no dedicated
   "retry just the event" method.
 
-### Unverified/unconfirmed protocol details (NFS-e)
+### NFS-e event (cancelamento) transmission — root-caused and fixed 2026-09-10
 
-Several aspects of the NFS-e (SEFIN Nacional/ADN) integration are **best-effort guesses, not verified
-facts**, each flagged with an `ATENÇÃO` comment at its definition site in `Sefaz4jNFSe.java` (or, for
-the last item, in `DpsXmlBuilder.java`). A future session must not treat these as settled:
+`cancelar`/`cancelarPorSubstituicao` originally got HTTP 500 (`{"message":"An error has occurred."}`,
+an ASP.NET default error page, not a SEFIN Nacional business rejection) against real Homologação,
+because of two wrong guesses baked into the original implementation — both now fixed and **confirmed
+real** by decoding the exact bytes a working reference implementation (ACBr, the legacy Delphi bot at
+`wezi-sefaz`) transmitted for a cancellation SEFAZ actually accepted (`doce_envio.doe_id 989248`,
+`doe_xmlretorno`'s `pedidoRegistroEventoXmlGZipB64` field, gzip+base64-decoded):
 
-- **Signing algorithm** — `ALGORITMO_ASSINATURA`/`ALGORITMO_DIGEST` are RSA-SHA256/SHA-256, chosen as
-  "the most likely modern federal default"; never tested against a real Homologação endpoint.
-- **Event JSON field name** — `CAMPO_JSON_EVENTO = "eventoXmlGZipB64"` is inferred purely from the
-  naming convention already observed in `dpsXmlGZipB64`/`nfseXmlGZipB64`, not confirmed against the
-  SEFIN Nacional integration manual.
-- **`"dpsXmlGZipB64"` confirmed real, but only as a request-side field name** — a real gzip+Base64
-  JSON payload captured 2026-08-27 decodes to exactly the signed `<DPS>` document (`infDPS` +
-  `Signature`), confirming the `"dpsXmlGZipB64"` key `PayloadCompactado.montarRequisicaoJson` already
-  uses is correct. Because the captured sample carried a DPS, not an NFS-e, it says nothing about
-  whether `"nfseXmlGZipB64"` — the field `RespostaNFSeParser` reads back out of `emitir`/
-  `consultarSituacao` responses — is the real response field name; that guess is still unconfirmed.
-- **Event submission endpoint path** — `{baseUrl}/{chaveAcesso}/eventos`, not confirmed.
-- **Which document the ADN expects signed for an event submission** — the current code assumes the
-  full `evento`, signed at its outer, required `infEvento` signature (mirroring NFe/CTe's convention
-  of signing the outermost wrapper). The unruled-out alternative is that the ADN instead wants just
-  the embedded `pedRegEvento` signed at its own optional (`minOccurs="0"`) `infPedReg` signature. If
-  Homologação rejects the current choice, `EventoNFSeXmlBuilder` already separates
-  `montarPedRegEvento`/`envolverEmEvento`, so the fix is isolated to signing/transmitting the former
-  instead of the latter.
+1. **Request JSON field name was wrong**: `"eventoXmlGZipB64"` is the RESPONSE field (what the ADN
+   hands back once it registers the event) — the REQUEST field is `"pedidoRegistroEventoXmlGZipB64"`.
+   These are two different fields on two sides of the same exchange; the original code used the
+   response name for both. `Sefaz4jNFSe` now has `CAMPO_JSON_PEDIDO_EVENTO` (request) and
+   `CAMPO_JSON_EVENTO_RESPOSTA` (response) as separate constants.
+2. **Transmitted document structure was wrong**: the request body is the bare `pedRegEvento` (root
+   element, with its own `<?xml ...?>` prologue), signed ONLY at `infPedReg` — there is **no outer
+   `evento`/`infEvento` wrapper in the request**. The original code built and signed that wrapper
+   (mirroring NFe/CTe's convention of signing the outermost envelope) and never sent the bare
+   `pedRegEvento` at all. `EventoNFSeXmlBuilder.parsearDocumento` + signing directly at `infPedReg`
+   (see `Sefaz4jNFSe.cancelar`/`cancelarPorSubstituicao`) is the fix. `EventoNFSeXmlBuilder
+   .envolverEmEvento`/`montarCancelamento` (the `evento`/`infEvento` wrapper builders) are **not
+   dead code** — the ADN's own RESPONSE, when it registers a cancellation, comes back wrapped in
+   exactly that `evento`/`infEvento` structure (with an ADN-assigned `infEvento` signed in
+   RSA-SHA256/SHA-256, and `verAplic` = the ADN's own app version, e.g. `"SefinNacional_1.6.0"` — NOT
+   the emitter's), so those builders are kept (and still tested by `EventoNFSeXmlBuilderTest`) as a
+   schema-valid reference, just never transmitted by the client.
+3. **Signing algorithm for the event was wrong**: `pedRegEvento`/`infPedReg` is signed with
+   **RSA-SHA1/SHA1** (`ALGORITMO_ASSINATURA_EVENTO`/`ALGORITMO_DIGEST_EVENTO`) — the same pair NFe/
+   CTe/MDFe already use — NOT RSA-SHA256/SHA-256. That newer pair (`ALGORITMO_ASSINATURA`/
+   `ALGORITMO_DIGEST`) is real, but only for `infDPS` at emission time (`emitir`), confirmed by
+   several real NFS-e actually authorized by SEFAZ (e.g. `doce_envio.doe_id` 989223/989236, cStat 100)
+   — a genuinely different algorithm choice for a genuinely different signature, not a typo to
+   collapse into one constant.
+
+Also confirmed independently (before the ACBr byte-level comparison, so worth keeping as corroboration):
+the event submission endpoint path `POST /nfse/{chaveAcesso}/eventos` matches section 1.5.2(a) of the
+official Manual dos Contribuintes (Sistema Nacional NFS-e) verbatim — `{baseUrl}/{chaveAcesso}/eventos`
+(`baseUrl` already ends in `.../nfse`) was never the problem.
+
+**Re-tested live after all three fixes and confirmed genuinely accepted** (`doce_envio.doe_id 989249`,
+2026-09-10): `doe_xmlenvio` came back populated with the ADN's real registered-event document (the
+`evento`/`infEvento`-wrapped structure described in point 2), not empty/null and not another HTTP 500.
+
+One more bug found and fixed along the way, independent of the three above: `RespostaNFSeParser
+.parsear` originally only treated a response as rejected when it had an `"erros"` JSON array — the
+generic ASP.NET error body (no `"erros"`, no recognizable field) fell through to the success path by
+default, so bot-sefaz recorded a false `"cancelada com sucesso"` in `doce_envio` for a cancellation
+that never actually happened at SEFAZ. Fixed: `parsear` now also takes the HTTP status and treats any
+non-2xx without a valid `"erros"` array as a failure.
+
 - **CNPJ/CPF-type-code mapping used when auto-generating `infDPS/@Id`**
   (`DpsXmlBuilder.injetarIdSeAusente`) — the numeric codes (CNPJ=2, CPF=1, NIF=3, cNaoNIF=9) and the
-  left-zero-pad-to-14 convention are a best-effort placeholder, not confirmed against any official
-  manual or the ACBr reference implementation.
+  left-zero-pad-to-14 convention are still a best-effort placeholder, not confirmed against any
+  official manual or the ACBr reference implementation. The one remaining unconfirmed guess in this
+  area — everything else in this section is now settled.
 
 ## MDFe (Padrão SOAP, 3.00) — emissão + ciclo de vida
 

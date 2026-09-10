@@ -404,11 +404,12 @@ public class Sefaz4jNFSeTest {
     private static final String X_MOTIVO_VALIDO = "Cancelamento por erro na emissao da nota";
 
     /**
-     * Caminho feliz de {@code cancelar}: monta o evento de 4 níveis, valida o {@code pedRegEvento}
-     * isolado, assina o {@code infEvento}, valida o {@code evento} completo e transmite. Também
-     * inspeciona o corpo que chegou ao servidor para provar que o evento transmitido é mesmo o
-     * {@code e101101} (e não outro tipo) — sem essa verificação, uma troca de tipo de evento passaria
-     * despercebida, exatamente o defeito que a fase 2 do CT-e encontrou.
+     * Caminho feliz de {@code cancelar}: monta o {@code pedRegEvento}, valida isolado, assina
+     * DIRETAMENTE no {@code infPedReg} (sem envelope {@code evento}/{@code infEvento} — ver
+     * {@link net.accellog.sefaz4j.nfse.xml.EventoNFSeXmlBuilder#parsearDocumento}) e transmite.
+     * Também inspeciona o corpo que chegou ao servidor para provar que o evento transmitido é mesmo
+     * o {@code e101101} (e não outro tipo) — sem essa verificação, uma troca de tipo de evento
+     * passaria despercebida, exatamente o defeito que a fase 2 do CT-e encontrou.
      */
     @Test
     public void cancelarAssinaValidaETransmiteOEventoE101101() {
@@ -418,7 +419,7 @@ public class Sefaz4jNFSeTest {
         servidor.createContext("/nfse-cancelar", exchange -> {
             pathRecebido[0] = exchange.getRequestURI().getPath();
             String corpoRequisicao = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-            xmlRecebido[0] = xmlDoCampoGZipB64(corpoRequisicao, "eventoXmlGZipB64");
+            xmlRecebido[0] = xmlDoCampoGZipB64(corpoRequisicao, "pedidoRegistroEventoXmlGZipB64");
 
             String xmlEventoProcessado = "<evento xmlns=\"http://www.sped.fazenda.gov.br/nfse\" versao=\"1.01\">"
                 + "<infEvento Id=\"EVT123\"><cStat>135</cStat></infEvento></evento>";
@@ -449,14 +450,16 @@ public class Sefaz4jNFSeTest {
             xmlEnviado.contains("<xDesc>Cancelamento de NFS-e</xDesc>"));
         assertTrue(xmlEnviado.contains("<cMotivo>1</cMotivo>"));
         assertTrue(xmlEnviado.contains("<xMotivo>" + X_MOTIVO_VALIDO + "</xMotivo>"));
-        assertTrue("o pedRegEvento deve estar embutido no infEvento", xmlEnviado.contains("<pedRegEvento"));
-        assertTrue(xmlEnviado.contains("Id=\"EVT" + CHAVE_ACESSO_EVENTO + "101101001\""));
+        assertTrue("o pedRegEvento e o proprio documento raiz transmitido, sem envelope evento/infEvento",
+            xmlEnviado.contains("<pedRegEvento"));
+        assertFalse("nao deve existir envelope evento/infEvento no XML transmitido",
+            xmlEnviado.contains("<infEvento"));
         assertTrue(xmlEnviado.contains("Id=\"PRE" + CHAVE_ACESSO_EVENTO + "101101\""));
         // O Santuario serializa a assinatura com o prefixo "ds:", por isso a asserção é feita sobre o
         // nome local e sobre a URI referenciada, não sobre uma tag literal sem prefixo.
-        assertTrue("o infEvento deve ter sido assinado", xmlEnviado.contains("SignatureValue"));
-        assertTrue("a assinatura deve referenciar o Id do infEvento",
-            xmlEnviado.contains("URI=\"#EVT" + CHAVE_ACESSO_EVENTO + "101101001\""));
+        assertTrue("o infPedReg deve ter sido assinado", xmlEnviado.contains("SignatureValue"));
+        assertTrue("a assinatura deve referenciar o Id do infPedReg",
+            xmlEnviado.contains("URI=\"#PRE" + CHAVE_ACESSO_EVENTO + "101101\""));
     }
 
     /**
@@ -583,7 +586,7 @@ public class Sefaz4jNFSeTest {
         servidor.createContext("/nfse-substituicao/" + CHAVE_ACESSO_EVENTO + "/eventos", exchange -> {
             pathEventoRecebido[0] = exchange.getRequestURI().getPath();
             String corpoRequisicao = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-            xmlEventoRecebido[0] = xmlDoCampoGZipB64(corpoRequisicao, "eventoXmlGZipB64");
+            xmlEventoRecebido[0] = xmlDoCampoGZipB64(corpoRequisicao, "pedidoRegistroEventoXmlGZipB64");
 
             String xmlEventoProcessado = "<evento xmlns=\"http://www.sped.fazenda.gov.br/nfse\" versao=\"1.01\">"
                 + "<infEvento Id=\"EVTSUB\"><cStat>135</cStat></infEvento></evento>";
@@ -626,9 +629,12 @@ public class Sefaz4jNFSeTest {
             xmlEnviado.contains("<chSubstituta>" + CHAVE_ACESSO_SUBSTITUTA + "</chSubstituta>"));
         assertTrue("o evento é registrado contra a chave ANTIGA",
             xmlEnviado.contains("<chNFSe>" + CHAVE_ACESSO_EVENTO + "</chNFSe>"));
-        assertTrue(xmlEnviado.contains("Id=\"EVT" + CHAVE_ACESSO_EVENTO + "105102001\""));
+        assertTrue("o pedRegEvento e o proprio documento raiz transmitido, sem envelope evento/infEvento",
+            xmlEnviado.contains("<pedRegEvento"));
         assertTrue(xmlEnviado.contains("Id=\"PRE" + CHAVE_ACESSO_EVENTO + "105102\""));
-        assertTrue("o infEvento deve ter sido assinado", xmlEnviado.contains("SignatureValue"));
+        assertTrue("o infPedReg deve ter sido assinado", xmlEnviado.contains("SignatureValue"));
+        assertTrue("a assinatura deve referenciar o Id do infPedReg",
+            xmlEnviado.contains("URI=\"#PRE" + CHAVE_ACESSO_EVENTO + "105102\""));
     }
 
     /**

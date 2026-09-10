@@ -149,6 +149,11 @@ public final class EventoNFSeXmlBuilder {
      * {@code evento}/{@code infEvento}. O documento resultante ainda NÃO está assinado —
      * {@code TCEvento} exige {@code ds:Signature}, então ele só passa em
      * {@code evento_v1.01.xsd} depois da assinatura do {@code infEvento}.
+     *
+     * <p><b>NÃO é isto que {@code Sefaz4jNFSe.cancelar}/{@code cancelarPorSubstituicao}
+     * transmitem</b> — ver {@link #parsearDocumento} para o porquê. Este método continua existindo
+     * (e testado) porque a estrutura {@code evento}/{@code infEvento} em si é schema-válida, só não
+     * é o que a SEFIN Nacional espera receber assinado nesta API.</p>
      */
     public static Document envolverEmEvento(String chNFSe, String tipoEvento, String dhProc, String pedRegEventoXml) {
         String xml = "<evento xmlns=\"" + NFSE_NAMESPACE + "\" versao=\"" + VERSAO + "\">" +
@@ -162,6 +167,22 @@ public final class EventoNFSeXmlBuilder {
             "</infEvento>" +
             "</evento>";
 
+        return parsearDocumento(xml);
+    }
+
+    /**
+     * Parseia um {@code pedRegEvento} já montado (por {@link #montarPedRegEvento}) em
+     * {@link Document}, pronto para ser assinado DIRETAMENTE no {@code infPedReg} — sem envelopar
+     * em {@code evento}/{@code infEvento}. É isto (não {@link #envolverEmEvento}) que a SEFIN
+     * Nacional de fato espera transmitido: confirmado 2026-09-10 contra o código-fonte do ACBr
+     * (implementação de referência, testada com sucesso real em Homologação no mesmo dia) — ver
+     * {@code TACBrNFSeProviderPadraoNacional.PrepararEnviarEvento}/{@code AssinarEnviarEvento} em
+     * {@code PadraoNacional.Provider.pas}, que assina {@code pedRegEvento}/{@code infPedReg}
+     * isolado, nunca um {@code evento} externo. {@code TCPedRegEvt} já declara o slot
+     * {@code ds:Signature} (irmão de {@code infPedReg}, {@code minOccurs="0"}) que recebe essa
+     * assinatura.
+     */
+    public static Document parsearDocumento(String xml) {
         try {
             DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
             dbf.setNamespaceAware(true);
