@@ -146,12 +146,19 @@ public final class Sefaz4jNFe {
 
         RespostaSefaz resposta = RespostaSefazParser.parsear(respostaBruta);
 
+        // nProt (protocolo de autorização): sem extraí-lo aqui, um cancelamento/CC-e futuro
+        // que dependa da "última autorização" (doe_acao IN 1,4,7) nunca acharia um protocolo
+        // nessa linha de CONSULTAR -- mesma extração já usada em enviarEProcessar.
+        String protocoloXml = resposta.getProtocoloXml();
+        String nProt = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "nProt") : null;
+
         return new ResultadoConsulta(
             "100".equals(resposta.getCStat()),
             resposta.getCStat(),
             resposta.getXMotivo(),
             resposta.getChaveDocumento(),
-            resposta.getProtocoloXml()
+            nProt,
+            protocoloXml
         );
     }
 

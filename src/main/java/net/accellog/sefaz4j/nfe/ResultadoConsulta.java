@@ -5,13 +5,15 @@ public final class ResultadoConsulta {
     private final String cStat;
     private final String xMotivo;
     private final String chNFe;
+    private final String nProt;
     private final String protocoloXml;
 
-    public ResultadoConsulta(boolean ok, String cStat, String xMotivo, String chNFe, String protocoloXml) {
+    public ResultadoConsulta(boolean ok, String cStat, String xMotivo, String chNFe, String nProt, String protocoloXml) {
         this.ok = ok;
         this.cStat = cStat;
         this.xMotivo = xMotivo;
         this.chNFe = chNFe;
+        this.nProt = nProt;
         this.protocoloXml = protocoloXml;
     }
 
@@ -29,6 +31,10 @@ public final class ResultadoConsulta {
 
     public String getChNFe() {
         return chNFe;
+    }
+
+    public String getNProt() {
+        return nProt;
     }
 
     public String getProtocoloXml() {
