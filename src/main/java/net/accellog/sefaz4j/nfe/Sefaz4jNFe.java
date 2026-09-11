@@ -67,7 +67,11 @@ public final class Sefaz4jNFe {
 
         Document documento = montarDocumento(nfe);
 
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infNFe", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
+        // prefixoAssinatura="" (em vez do "ds:" default do Apache Santuario): confirmado
+        // empiricamente contra a SEFAZ-PR (homologação) que a mesma exigência do CT-e (cStat 598)
+        // e do MDF-e também vale para a NFe (cStat 587 "Usar somente o namespace padrao da NF-e"),
+        // mesmo com NFe/infNFe já sem prefixo (NFeXmlBuilder).
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infNFe", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1, "");
 
         String xmlAssinado = serializarDocumento(documento);
 

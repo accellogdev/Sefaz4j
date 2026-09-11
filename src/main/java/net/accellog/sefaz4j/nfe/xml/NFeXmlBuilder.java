@@ -1,5 +1,6 @@
 package net.accellog.sefaz4j.nfe.xml;
 
+import com.sun.xml.bind.marshaller.NamespacePrefixMapper;
 import net.accellog.sefaz4j.chave.ChaveAcessoCalculator;
 import net.accellog.sefaz4j.nfe.model.ObjectFactory;
 import net.accellog.sefaz4j.nfe.model.TNFe;
@@ -20,6 +21,8 @@ import javax.xml.parsers.DocumentBuilderFactory;
  */
 public final class NFeXmlBuilder {
 
+    private static final String NFE_NAMESPACE = "http://www.portalfiscal.inf.br/nfe";
+
     private NFeXmlBuilder() {
     }
 
@@ -32,11 +35,42 @@ public final class NFeXmlBuilder {
 
         JAXBContext contexto = JAXBContext.newInstance(TNFe.class);
         Marshaller marshaller = contexto.createMarshaller();
+        // Sem mapper, o JAXB marshalla com um prefixo gerado (ex.: ns2:NFe xmlns:ns2="...") em vez
+        // de declarar o namespace da NFe como default -- a SEFAZ rejeita isso com cStat 587 ("Usar
+        // somente o namespace padrao da NF-e"). Mesmo padrão já usado em CTeXmlBuilder/MDFeXmlBuilder/
+        // DpsXmlBuilder.
+        marshaller.setProperty("com.sun.xml.bind.namespacePrefixMapper", new NamespacePrefixMapper() {
+            @Override
+            public String getPreferredPrefix(String namespaceUri, String suggestion, boolean requirePrefix) {
+                return NFE_NAMESPACE.equals(namespaceUri) ? "" : suggestion;
+            }
+        });
         ObjectFactory fabrica = new ObjectFactory();
         JAXBElement<TNFe> elementoRaiz = fabrica.createNFe(nfe);
         marshaller.marshal(elementoRaiz, documento);
 
+        removerDeclaracaoNamespaceOrfaDoXmldsig(documento);
+
         return documento;
+    }
+
+    /**
+     * {@code TNFe.InfNFe.signature} (ds:Signature) fica sempre nulo aqui -- a assinatura real é
+     * inserida depois via DOM por {@code AssinadorXml}. Mesmo assim o JAXB RI pré-declara o
+     * namespace do xmldsig (usado em outras classes do mesmo {@code JAXBContext}) como
+     * {@code xmlns:ns2} órfão na raiz da NFe, o que também viola a exigência de "somente o
+     * namespace padrão da NF-e" -- mesmo padrão já usado em CTeXmlBuilder (CTe).
+     */
+    private static void removerDeclaracaoNamespaceOrfaDoXmldsig(Document documento) {
+        org.w3c.dom.Element raiz = documento.getDocumentElement();
+        org.w3c.dom.NamedNodeMap atributos = raiz.getAttributes();
+        for (int i = atributos.getLength() - 1; i >= 0; i--) {
+            org.w3c.dom.Attr atributo = (org.w3c.dom.Attr) atributos.item(i);
+            if (javax.xml.XMLConstants.XMLNS_ATTRIBUTE_NS_URI.equals(atributo.getNamespaceURI())
+                    && "http://www.w3.org/2000/09/xmldsig#".equals(atributo.getValue())) {
+                raiz.removeAttributeNode(atributo);
+            }
+        }
     }
 
     private static void injetarChaveEIdSeAusente(TNFe nfe) {
