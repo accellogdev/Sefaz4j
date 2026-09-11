@@ -60,7 +60,7 @@ public final class ValidadorXsd {
         }
 
         if (!violacoes.isEmpty()) {
-            throw new ValidacaoXsdException(violacoes);
+            throw new ValidacaoXsdException(violacoes, xml);
         }
     }
 
