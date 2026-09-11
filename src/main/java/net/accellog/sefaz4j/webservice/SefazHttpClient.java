@@ -109,7 +109,7 @@ public final class SefazHttpClient {
     ) {
         HttpResponse<String> response = enviarPost(url, contentType, corpo, pfxBytes, senha, timeout);
         if (response.statusCode() / 100 != 2) {
-            throw new ComunicacaoException("SEFAZ retornou HTTP " + response.statusCode() + ": " + response.body(), null);
+            throw new ComunicacaoException("SEFAZ retornou HTTP " + response.statusCode() + ": " + resumirCorpo(response.body()), null);
         }
         return response.body();
     }
@@ -210,7 +210,7 @@ public final class SefazHttpClient {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             logarResposta(response);
             if (response.statusCode() / 100 != 2) {
-                throw new ComunicacaoException("SEFAZ retornou HTTP " + response.statusCode() + ": " + response.body(), null);
+                throw new ComunicacaoException("SEFAZ retornou HTTP " + response.statusCode() + ": " + resumirCorpo(response.body()), null);
             }
             return response.body();
         } catch (ComunicacaoException e) {
@@ -218,6 +218,24 @@ public final class SefazHttpClient {
         } catch (Exception e) {
             throw new ComunicacaoException("Falha de comunicação com a SEFAZ em " + url, e);
         }
+    }
+
+    // Limite curto o suficiente para caber num campo de "motivo" de uma linha de fila (e na UI
+    // que o exibe) sem quebrar layout -- visto na prática quando um proxy/WAF em frente à SEFAZ
+    // (ex.: IIS do SVRS) devolve uma página HTML de erro inteira (milhares de caracteres) em vez
+    // de um corpo SOAP curto. O corpo completo já foi gravado em DEBUG por logarResposta logo
+    // antes desta exceção ser lançada -- nada se perde, só não vai inteiro para doe_retorno_motivo.
+    private static final int LIMITE_RESUMO_CORPO = 300;
+
+    private static String resumirCorpo(String corpo) {
+        if (corpo == null) {
+            return "";
+        }
+        String semQuebrasDeLinha = corpo.replaceAll("\\s+", " ").trim();
+        if (semQuebrasDeLinha.length() <= LIMITE_RESUMO_CORPO) {
+            return semQuebrasDeLinha;
+        }
+        return semQuebrasDeLinha.substring(0, LIMITE_RESUMO_CORPO) + "... (corpo truncado, ver log em DEBUG)";
     }
 
     /**
