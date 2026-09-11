@@ -135,7 +135,10 @@ public final class Sefaz4jMDFe {
         String detEvento = "<detEvento versaoEvento=\"" + MDFE_VERSAO + "\">" + evCancMDFeFragmento + "</detEvento>";
 
         Document documento = EventoMDFeXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110111", 1, MDFE_VERSAO, detEvento);
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), MDFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
+        // prefixoAssinatura="" -- mesma exigência já confirmada para a emissão do MDF-e também
+        // vale para o evento de cancelamento; nunca testado de verdade contra a SEFAZ até esta
+        // correção.
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), MDFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1, "");
         String xmlEventoAssinado = serializarDocumento(documento);
 
         return enviarEProcessarEvento(config, xmlEventoAssinado);
@@ -160,7 +163,8 @@ public final class Sefaz4jMDFe {
         String detEvento = "<detEvento versaoEvento=\"" + MDFE_VERSAO + "\">" + evEncMDFeFragmento + "</detEvento>";
 
         Document documento = EventoMDFeXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110112", 1, MDFE_VERSAO, detEvento);
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), MDFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
+        // prefixoAssinatura="" -- mesma exigência do evento de cancelamento acima.
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), MDFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1, "");
         String xmlEventoAssinado = serializarDocumento(documento);
 
         return enviarEProcessarEvento(config, xmlEventoAssinado);
@@ -188,7 +192,8 @@ public final class Sefaz4jMDFe {
         String detEvento = "<detEvento versaoEvento=\"" + MDFE_VERSAO + "\">" + evIncCondutorMDFeFragmento + "</detEvento>";
 
         Document documento = EventoMDFeXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110114", nSeqEvento, MDFE_VERSAO, detEvento);
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), MDFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
+        // prefixoAssinatura="" -- mesma exigência do evento de cancelamento acima.
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), MDFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1, "");
         String xmlEventoAssinado = serializarDocumento(documento);
 
         return enviarEProcessarEvento(config, xmlEventoAssinado);
@@ -286,13 +291,17 @@ public final class Sefaz4jMDFe {
         String protocoloXml = resposta.getProtocoloXml();
         String cStatFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "cStat") : resposta.getCStat();
         String xMotivoFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "xMotivo") : resposta.getXMotivo();
+        // nProt (protocolo de autorização) -- mesma extração já usada em enviarEProcessarEvento
+        // para ResultadoEvento; sem isso, quem chama emitir() não tinha como saber o nProt para
+        // um cancelamento/encerramento futuro sobre este mesmo MDF-e.
+        String nProtFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "nProt") : null;
 
         boolean autorizado = "100".equals(cStatFinal);
         String xmlFinal = protocoloXml != null
             ? "<mdfeProc versao=\"" + MDFE_VERSAO + "\" xmlns=\"" + MDFE_NAMESPACE + "\">" + xmlAssinado + protocoloXml + "</mdfeProc>"
             : xmlAssinado;
 
-        return new ResultadoEmissao(autorizado, cStatFinal, xMotivoFinal, resposta.getChaveDocumento(), xmlFinal);
+        return new ResultadoEmissao(autorizado, cStatFinal, xMotivoFinal, resposta.getChaveDocumento(), nProtFinal, xmlFinal);
     }
 
     private static ResultadoEvento enviarEProcessarEvento(Sefaz4jConfig config, String xmlEventoAssinado) {

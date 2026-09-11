@@ -177,7 +177,10 @@ public final class Sefaz4jNFe {
             "</detEvento>";
 
         Document documento = EventoXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110111", 1, "1.00", detEvento);
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
+        // prefixoAssinatura="" -- mesma exigência já confirmada para a emissão (enviarEProcessar,
+        // cStat 587) também vale para o evento de cancelamento, confirmado empiricamente contra a
+        // SEFAZ-PR.
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1, "");
         String xmlEventoAssinado = serializarDocumento(documento);
 
         return enviarEProcessarEvento(config, xmlEventoAssinado, "eventoCancNFe_v1.00.xsd");
@@ -209,7 +212,9 @@ public final class Sefaz4jNFe {
             "</detEvento>";
 
         Document documento = EventoXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110110", nSeqEvento, "1.00", detEvento);
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
+        // prefixoAssinatura="" -- mesma exigência do evento de cancelamento acima (cStat 587,
+        // confirmado empiricamente contra a SEFAZ-PR).
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1, "");
         String xmlEventoAssinado = serializarDocumento(documento);
 
         return enviarEProcessarEvento(config, xmlEventoAssinado, "CCe_v1.00.xsd");
@@ -256,7 +261,9 @@ public final class Sefaz4jNFe {
             "</inutNFe>";
 
         Document documento = parseXmlParaDocumento(xmlInutilizacao);
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infInut", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
+        // prefixoAssinatura="" -- mesma exigência da emissão/eventos acima (cStat 587, confirmado
+        // empiricamente contra a SEFAZ-PR).
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infInut", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1, "");
         String xmlAssinado = serializarDocumento(documento);
 
         ValidadorXsd.validar(xmlAssinado, "/schemas/nfe/inutNFe_v4.00.xsd");
@@ -442,6 +449,10 @@ public final class Sefaz4jNFe {
         String protocoloXml = resposta.getProtocoloXml();
         String cStatFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "cStat") : resposta.getCStat();
         String xMotivoFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "xMotivo") : resposta.getXMotivo();
+        // nProt (protocolo de autorização) -- mesma extração já usada em enviarEProcessarEvento
+        // para ResultadoEvento; sem isso, quem chama emitir() não tinha como saber o nProt para
+        // um cancelamento/CC-e futuro sobre esta mesma NFe.
+        String nProtFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "nProt") : null;
 
         boolean autorizado = "100".equals(cStatFinal);
         // xmlAutorizado precisa ser um único documento XML bem-formado
@@ -455,7 +466,7 @@ public final class Sefaz4jNFe {
             ? "<nfeProc versao=\"4.00\" xmlns=\"http://www.portalfiscal.inf.br/nfe\">" + xmlAssinado + protocoloXml + "</nfeProc>"
             : xmlAssinado;
 
-        return new ResultadoEmissao(autorizado, cStatFinal, xMotivoFinal, resposta.getChaveDocumento(), xmlFinal);
+        return new ResultadoEmissao(autorizado, cStatFinal, xMotivoFinal, resposta.getChaveDocumento(), nProtFinal, xmlFinal);
     }
 
     private static String extrairTextoDoElemento(String xmlFragmento, String nomeLocalElemento) {

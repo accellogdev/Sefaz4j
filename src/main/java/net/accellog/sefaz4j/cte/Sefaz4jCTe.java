@@ -141,7 +141,10 @@ public final class Sefaz4jCTe {
         Document documento = EventoCTeXmlBuilder.montar(
             cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110111", 1, CTE_VERSAO, detEvento
         );
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), CTE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
+        // prefixoAssinatura="" -- mesma exigência já confirmada para a emissão do CT-e (cStat
+        // 598 "Usar somente o namespace padrao do CTe") também vale para o evento de
+        // cancelamento; nunca testado de verdade contra a SEFAZ até esta correção.
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), CTE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1, "");
         String xmlEventoAssinado = serializarDocumento(documento);
 
         return enviarEProcessarEvento(config, xmlEventoAssinado);
@@ -189,7 +192,8 @@ public final class Sefaz4jCTe {
         Document documento = EventoCTeXmlBuilder.montar(
             cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110110", nSeqEvento, CTE_VERSAO, detEvento
         );
-        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), CTE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1);
+        // prefixoAssinatura="" -- mesma exigência do evento de cancelamento acima.
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), CTE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1, "");
         String xmlEventoAssinado = serializarDocumento(documento);
 
         return enviarEProcessarEvento(config, xmlEventoAssinado);
@@ -262,13 +266,17 @@ public final class Sefaz4jCTe {
         String protocoloXml = resposta.getProtocoloXml();
         String cStatFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "cStat") : resposta.getCStat();
         String xMotivoFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "xMotivo") : resposta.getXMotivo();
+        // nProt (protocolo de autorização) -- mesma extração já usada em enviarEProcessarEvento
+        // para ResultadoEvento; sem isso, quem chama emitir() não tinha como saber o nProt para
+        // um cancelamento futuro sobre este mesmo CT-e.
+        String nProtFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "nProt") : null;
 
         boolean autorizado = "100".equals(cStatFinal);
         String xmlFinal = protocoloXml != null
             ? "<cteProc versao=\"4.00\" xmlns=\"" + CTE_NAMESPACE + "\">" + xmlAssinado + protocoloXml + "</cteProc>"
             : xmlAssinado;
 
-        return new ResultadoEmissao(autorizado, cStatFinal, xMotivoFinal, resposta.getChaveDocumento(), xmlFinal);
+        return new ResultadoEmissao(autorizado, cStatFinal, xMotivoFinal, resposta.getChaveDocumento(), nProtFinal, xmlFinal);
     }
 
     private static ResultadoEvento enviarEProcessarEvento(Sefaz4jConfig config, String xmlEventoAssinado) {
