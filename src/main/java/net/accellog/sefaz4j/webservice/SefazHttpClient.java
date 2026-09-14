@@ -15,6 +15,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.security.Key;
 import java.security.KeyStore;
 import java.security.MessageDigest;
 import java.security.cert.Certificate;
@@ -22,7 +23,9 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.Enumeration;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
 public final class SefazHttpClient {
 
@@ -288,6 +291,7 @@ public final class SefazHttpClient {
     private static SSLContext criarSslContext(byte[] pfxBytes, String senha) throws Exception {
         KeyStore keyStore = KeyStore.getInstance("PKCS12");
         keyStore.load(new ByteArrayInputStream(pfxBytes), senha.toCharArray());
+        completarCadeiasIncompletas(keyStore, senha.toCharArray(), SefazHttpClient::baixarBytesAia);
 
         KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
         kmf.init(keyStore, senha.toCharArray());
@@ -297,5 +301,70 @@ public final class SefazHttpClient {
         SSLContext sslContext = SSLContext.getInstance("TLS");
         sslContext.init(kmf.getKeyManagers(), trustManagersComIcpBrasil(), null);
         return sslContext;
+    }
+
+    /**
+     * Para cada entrada de chave privada do KeyStore cujo certificado veio sozinho (sem a cadeia da
+     * AC), tenta completar a cadeia via {@link CadeiaCertificadoCompleta#completar} e regrava a
+     * entrada com a cadeia completa. Ver a javadoc de {@link CadeiaCertificadoCompleta} para o
+     * porquê disso ser necessário (caso real: PFX de cliente exportado só com a folha).
+     *
+     * <p>É best-effort: qualquer falha ao completar a cadeia de um alias (rede indisponível,
+     * certificado sem AIA, etc.) só loga um aviso e segue com a cadeia original daquele alias —
+     * igual ao comportamento de antes desta funcionalidade existir, nunca impede o envio.</p>
+     */
+    static void completarCadeiasIncompletas(KeyStore keyStore, char[] senha, Function<String, byte[]> downloader) throws Exception {
+        Enumeration<String> aliases = keyStore.aliases();
+        while (aliases.hasMoreElements()) {
+            String alias = aliases.nextElement();
+            if (!keyStore.isKeyEntry(alias)) {
+                continue;
+            }
+
+            Certificate[] cadeia = keyStore.getCertificateChain(alias);
+            if (cadeia == null || cadeia.length != 1 || !(cadeia[0] instanceof X509Certificate)) {
+                continue;
+            }
+
+            X509Certificate[] cadeiaOriginal = new X509Certificate[]{(X509Certificate) cadeia[0]};
+            X509Certificate[] cadeiaCompleta;
+            try {
+                cadeiaCompleta = CadeiaCertificadoCompleta.completar(cadeiaOriginal, downloader);
+            } catch (Exception e) {
+                LOGGER.warn("Falha ao tentar completar a cadeia do certificado (alias={}); seguindo só com o certificado-folha, como antes", alias, e);
+                continue;
+            }
+
+            if (cadeiaCompleta.length > cadeiaOriginal.length) {
+                LOGGER.debug("Cadeia do certificado completada via AIA (alias={}): {} -> {} certificados", alias, cadeiaOriginal.length, cadeiaCompleta.length);
+                Key chave = keyStore.getKey(alias, senha);
+                keyStore.setKeyEntry(alias, chave, senha, cadeiaCompleta);
+            }
+        }
+    }
+
+    private static byte[] baixarBytesAia(String url) {
+        try {
+            // URLs de "CA Issuers" ICP-Brasil são tipicamente HTTP simples (repositório público da
+            // AC) -- HttpClient.newHttpClient() com o trust store padrão da JVM é suficiente, sem
+            // precisar do SSLContext com certificado cliente usado para falar com a SEFAZ.
+            HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .build();
+            HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(5))
+                .GET()
+                .build();
+            HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            if (response.statusCode() / 100 != 2) {
+                throw new ComunicacaoException("Busca de CA Issuers retornou HTTP " + response.statusCode() + ": " + url, null);
+            }
+            return response.body();
+        } catch (ComunicacaoException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ComunicacaoException("Falha ao buscar CA Issuers em " + url, e);
+        }
     }
 }
