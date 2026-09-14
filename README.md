@@ -5,8 +5,7 @@ documentos fiscais eletrônicos brasileiros. O objetivo final é cobrir **NFe**,
 **NFSe**; hoje estão implementados o **ciclo de vida completo da NFe 4.00**, o **ciclo de vida
 completo do CTe 4.00** (emissão + consulta/cancelamento/CC-e — a inutilização foi descontinuada pela
 SEFAZ para o CTe 4.00, ver seção do CTe abaixo), o **ciclo de vida completo do MDFe 3.00** (emissão +
-consulta/cancelamento/encerramento/inclusão de condutor — inutilização nunca existiu para o MDFe, ver
-seção do MDFe abaixo) e a **NFS-e Padrão Nacional** (emissão, consulta, cancelamento e cancelamento
+consulta/cancelamento/encerramento/inclusão de condutor) e a **NFS-e Padrão Nacional** (emissão, consulta, cancelamento e cancelamento
 por substituição, ver seção da NFS-e abaixo; confirmação/rejeição ainda não implementada).
 
 O que o pacote de NFe já faz: monta o XML a partir de um objeto JAXB (`TNFe`), calcula a chave de
@@ -31,9 +30,7 @@ transmite via `MDFeRecepcao` — um serviço de **lote**, igual ao NFe (não sí
 `CTeRecepcaoSinc`) — fazendo o polling de `MDFeRetRecepcao` quando o lote fica "em processamento".
 Cobre também o ciclo de vida pós-emissão: consulta de situação, cancelamento (evento `110111`),
 encerramento (evento `110112`) e inclusão de condutor (evento `110114`, o único dos três que não
-exige o número de protocolo). Não existe inutilização para o MDFe: diferente do CTe, onde a SEFAZ
-apenas descontinuou o recurso na versão 4.00, a inutilização nunca fez parte do padrão MDFe (confirmado
-pela ausência total na implementação de referência ACBr).
+exige o número de protocolo).
 
 O pacote de NFS-e (Padrão Nacional/SEFIN Nacional) é o mais diferente arquiteturalmente dos quatro: o
 transporte é **REST+JSON, não SOAP**, e não há divisão por UF — um único endpoint nacional (ADN)
@@ -352,9 +349,7 @@ ResultadoEvento segundoCondutor = Sefaz4jMDFe.incluirCondutor(config, chaveAcess
 
 `ResultadoConsulta` e `ResultadoEvento` do MDFe seguem o mesmo formato do `ResultadoEmissao`:
 `isOk()` é estrito para o `cStat` de sucesso específico da operação (`100` para consulta, `135`
-para qualquer um dos três eventos), com `getCStat()`/`getXMotivo()` sempre preenchidos. Não há
-`Sefaz4jMDFe.inutilizar` — diferente do CTe (onde a SEFAZ apenas descontinuou o recurso na versão
-4.00), a inutilização nunca fez parte do padrão MDFe.
+para qualquer um dos três eventos), com `getCStat()`/`getXMotivo()` sempre preenchidos.
 
 ## NFS-e
 
@@ -493,5 +488,5 @@ ficam na raiz e são compartilhadas pelos quatro documentos (NFS-e é a exceçã
 - [x] CTe — emissão (4.00)
 - [x] CTe — ciclo de vida pós-emissão (consulta/cancelamento/CC-e — inutilização descontinuada pela SEFAZ)
 - [x] MDFe — emissão (3.00)
-- [x] MDFe — ciclo de vida pós-emissão (consulta/cancelamento/encerramento/inclusão de condutor — inutilização nunca existiu no padrão)
+- [x] MDFe — ciclo de vida pós-emissão (consulta/cancelamento/encerramento/inclusão de condutor)
 - [x] NFSe — emissão, consulta, cancelamento e cancelamento por substituição (Padrão Nacional)
