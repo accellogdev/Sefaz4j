@@ -232,7 +232,13 @@ public final class Sefaz4jNFe {
         exigirChaveAcessoValida(chaveAcesso);
 
         String xmlEventoAssinado = assinarXmlManifestacaoCiencia(config, chaveAcesso, cnpjDestinatario, 1);
-        ResultadoEvento resultadoEvento = enviarEProcessarEvento(config, UF.AN, xmlEventoAssinado, "envEventoManifDestinatario_v1.00.xsd");
+        // "confRecebto_v1.00.xsd" (não "envEventoManifDestinatario_v1.00.xsd", nome assumido no
+        // planejamento original antes de localizar o schema oficial): é o schema oficial da SEFAZ
+        // para o grupo "Confirmação de Recebimento" (Manifestação do Destinatário), que cobre os
+        // tpEvento 210200/210210/210220/210240 -- confirmado em
+        // C:\Strada_Web\wezi\wezi-sefaz\Schemas\NFe\confRecebto_v1.00.xsd (mesmo padrão raiz-evento
+        // usado por CCe_v1.00.xsd para a Carta de Correção).
+        ResultadoEvento resultadoEvento = enviarEProcessarEvento(config, UF.AN, xmlEventoAssinado, "confRecebto_v1.00.xsd");
         return new ResultadoManifestacao(xmlEventoAssinado, resultadoEvento);
     }
 

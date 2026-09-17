@@ -532,6 +532,56 @@ public class Sefaz4jNFeTest {
         );
     }
 
+    // Cobre a lacuna apontada em revisão do Task 9: confirma que
+    // "confRecebto_v1.00.xsd" (nome oficial do schema da SEFAZ para o grupo
+    // "Confirmação de Recebimento"/Manifestação do Destinatário, localizado em
+    // C:\Strada_Web\wezi\wezi-sefaz\Schemas\NFe\confRecebto_v1.00.xsd) de fato
+    // valida o XML real assinado por manifestarCienciaDaOperacao — exercitando
+    // ValidadorXsd.validar (dentro de enviarEProcessarEvento) com uma
+    // assinatura XML-DSig real (mesmo certificado de teste usado pelos testes
+    // de CC-e/cancelamento acima), não apenas a montagem não assinada já
+    // coberta por Sefaz4jNFeManifestacaoTest.
+    @Test
+    public void manifestarCienciaDaOperacaoValidaXsdEEnviaEventoRegistrado() {
+        servidor.createContext("/evento-manifestacao", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><nfeResultMsg xmlns=\"http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4\">" +
+                "<retEnvEvento xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"1.00\">" +
+                "<idLote>1</idLote><tpAmb>2</tpAmb><verAplic>AN_1.0.0</verAplic><cOrgao>91</cOrgao>" +
+                "<cStat>128</cStat><xMotivo>Lote de evento processado</xMotivo>" +
+                "<retEvento versao=\"1.00\"><infEvento>" +
+                "<tpAmb>2</tpAmb><verAplic>AN_1.0.0</verAplic><cOrgao>91</cOrgao>" +
+                "<cStat>135</cStat><xMotivo>Evento registrado e vinculado a NF-e</xMotivo>" +
+                "<chNFe>35250812345678000195550010000001231123456789</chNFe>" +
+                "<tpEvento>210210</tpEvento><xEvento>Ciencia da Operacao</xEvento><nSeqEvento>1</nSeqEvento>" +
+                "<dhRegEvento>2025-08-12T10:16:00-03:00</dhRegEvento>" +
+                "<nProt>135250000000005</nProt>" +
+                "</infEvento></retEvento>" +
+                "</retEnvEvento></nfeResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+        config.setUrlRecepcaoEventoOverride("https://localhost:" + servidor.getAddress().getPort() + "/evento-manifestacao");
+
+        ResultadoManifestacao resultado = Sefaz4jNFe.manifestarCienciaDaOperacao(
+            config,
+            "35250812345678000195550010000001231123456789",
+            "98765432000188"
+        );
+
+        assertTrue(resultado.getResultadoEvento().isOk());
+        assertEquals("135", resultado.getResultadoEvento().getCStat());
+        assertEquals("135250000000005", resultado.getResultadoEvento().getNProt());
+        assertTrue(resultado.getXmlEnvio().contains("<cOrgao>91</cOrgao>"));
+        assertTrue(resultado.getXmlEnvio().contains("<tpEvento>210210</tpEvento>"));
+        assertTrue(resultado.getXmlEnvio().contains("<descEvento>Ciencia da Operacao</descEvento>"));
+        assertTrue("xmlEnvio deve carregar a assinatura de fato enviada",
+            resultado.getXmlEnvio().contains("<Signature xmlns=\"http://www.w3.org/2000/09/xmldsig#\">"));
+    }
+
     @Test
     public void inutilizarRetornaHomologado() {
         servidor.createContext("/inutilizacao", exchange -> {
