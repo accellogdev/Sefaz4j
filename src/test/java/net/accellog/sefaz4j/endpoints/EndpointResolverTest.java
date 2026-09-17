@@ -39,6 +39,11 @@ public class EndpointResolverTest {
     @Test
     public void todasAs27UFsResolvemOsDoisServicosNosDoisAmbientes() {
         for (UF uf : UF.values()) {
+            // UF.AN é um marcador de Ambiente Nacional (usado só pela Distribuição de DFe),
+            // não um dos 27 estados/DF reais com seção própria em nfe-servicos.ini.
+            if (uf == UF.AN) {
+                continue;
+            }
             for (Ambiente ambiente : Ambiente.values()) {
                 for (Servico servico : Servico.values()) {
                     String url = EndpointResolver.resolver(NFE_INI, PREFIXO, uf, ambiente, servico.getChaveIni());

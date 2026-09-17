@@ -15,6 +15,11 @@ public class EndpointResolverMDFeTest {
     @Test
     public void todasAs27UFsResolvemRecepcaoNosDoisAmbientes() {
         for (UF uf : UF.values()) {
+            // UF.AN é um marcador de Ambiente Nacional (usado só pela Distribuição de DFe),
+            // não um dos 27 estados/DF reais com seção própria em mdfe-servicos.ini.
+            if (uf == UF.AN) {
+                continue;
+            }
             for (Ambiente ambiente : Ambiente.values()) {
                 String url = EndpointResolver.resolver(MDFE_INI, PREFIXO, uf, ambiente, Servico.MDFE_RECEPCAO.getChaveIni());
                 assertTrue(uf + "/" + ambiente + " não resolveu uma URL de MDFeRecepcao", url != null && url.startsWith("http"));
@@ -25,6 +30,9 @@ public class EndpointResolverMDFeTest {
     @Test
     public void todasAs27UFsResolvemRetRecepcaoNosDoisAmbientes() {
         for (UF uf : UF.values()) {
+            if (uf == UF.AN) {
+                continue;
+            }
             for (Ambiente ambiente : Ambiente.values()) {
                 String url = EndpointResolver.resolver(MDFE_INI, PREFIXO, uf, ambiente, Servico.MDFE_RET_RECEPCAO.getChaveIni());
                 assertTrue(uf + "/" + ambiente + " não resolveu uma URL de MDFeRetRecepcao", url != null && url.startsWith("http"));
@@ -35,6 +43,9 @@ public class EndpointResolverMDFeTest {
     @Test
     public void todasAs27UFsResolvemConsultaProtocoloNosDoisAmbientes() {
         for (UF uf : UF.values()) {
+            if (uf == UF.AN) {
+                continue;
+            }
             for (Ambiente ambiente : Ambiente.values()) {
                 String url = EndpointResolver.resolver(MDFE_INI, PREFIXO, uf, ambiente, Servico.MDFE_CONSULTA_PROTOCOLO.getChaveIni());
                 assertTrue(uf + "/" + ambiente + " não resolveu uma URL de MDFeConsultaProtocolo", url != null && url.startsWith("http"));
@@ -45,6 +56,9 @@ public class EndpointResolverMDFeTest {
     @Test
     public void todasAs27UFsResolvemRecepcaoEventoNosDoisAmbientes() {
         for (UF uf : UF.values()) {
+            if (uf == UF.AN) {
+                continue;
+            }
             for (Ambiente ambiente : Ambiente.values()) {
                 String url = EndpointResolver.resolver(MDFE_INI, PREFIXO, uf, ambiente, Servico.RECEPCAO_EVENTO.getChaveIni());
                 assertTrue(uf + "/" + ambiente + " não resolveu uma URL de RecepcaoEvento", url != null && url.startsWith("http"));

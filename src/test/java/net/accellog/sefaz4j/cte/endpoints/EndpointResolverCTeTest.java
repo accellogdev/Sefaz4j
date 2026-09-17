@@ -15,6 +15,11 @@ public class EndpointResolverCTeTest {
     @Test
     public void todasAs27UFsResolvemRecepcaoSincNosDoisAmbientes() {
         for (UF uf : UF.values()) {
+            // UF.AN é um marcador de Ambiente Nacional (usado só pela Distribuição de DFe),
+            // não um dos 27 estados/DF reais com seção própria em cte-servicos.ini.
+            if (uf == UF.AN) {
+                continue;
+            }
             for (Ambiente ambiente : Ambiente.values()) {
                 String url = EndpointResolver.resolver(CTE_INI, PREFIXO, uf, ambiente, Servico.CTE_RECEPCAO_SINC.getChaveIni());
                 assertTrue(uf + "/" + ambiente + " não resolveu uma URL de CTeRecepcaoSinc", url != null && url.startsWith("http"));
@@ -25,6 +30,9 @@ public class EndpointResolverCTeTest {
     @Test
     public void todasAs27UFsResolvemConsultaProtocoloNosDoisAmbientes() {
         for (UF uf : UF.values()) {
+            if (uf == UF.AN) {
+                continue;
+            }
             for (Ambiente ambiente : Ambiente.values()) {
                 String url = EndpointResolver.resolver(CTE_INI, PREFIXO, uf, ambiente, Servico.CTE_CONSULTA_PROTOCOLO.getChaveIni());
                 assertTrue(uf + "/" + ambiente + " não resolveu uma URL de CTeConsultaProtocolo", url != null && url.startsWith("http"));
@@ -35,6 +43,9 @@ public class EndpointResolverCTeTest {
     @Test
     public void todasAs27UFsResolvemRecepcaoEventoNosDoisAmbientes() {
         for (UF uf : UF.values()) {
+            if (uf == UF.AN) {
+                continue;
+            }
             for (Ambiente ambiente : Ambiente.values()) {
                 String url = EndpointResolver.resolver(CTE_INI, PREFIXO, uf, ambiente, Servico.CTE_RECEPCAO_EVENTO.getChaveIni());
                 assertTrue(uf + "/" + ambiente + " não resolveu uma URL de RecepcaoEvento", url != null && url.startsWith("http"));
