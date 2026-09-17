@@ -3,6 +3,7 @@ package net.accellog.sefaz4j.nfe;
 import net.accellog.sefaz4j.assinatura.AssinadorXml;
 import net.accellog.sefaz4j.endpoints.Ambiente;
 import net.accellog.sefaz4j.endpoints.EndpointResolver;
+import net.accellog.sefaz4j.endpoints.UF;
 import net.accellog.sefaz4j.nfe.endpoints.Servico;
 import net.accellog.sefaz4j.nfe.model.TNFe;
 import net.accellog.sefaz4j.validacao.ValidadorXsd;
@@ -190,7 +191,7 @@ public final class Sefaz4jNFe {
         AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1, "");
         String xmlEventoAssinado = serializarDocumento(documento);
 
-        return enviarEProcessarEvento(config, xmlEventoAssinado, "eventoCancNFe_v1.00.xsd");
+        return enviarEProcessarEvento(config, config.getUf(), xmlEventoAssinado, "eventoCancNFe_v1.00.xsd");
     }
 
     private static final String X_COND_USO_CCE =
@@ -224,7 +225,31 @@ public final class Sefaz4jNFe {
         AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1, "");
         String xmlEventoAssinado = serializarDocumento(documento);
 
-        return enviarEProcessarEvento(config, xmlEventoAssinado, "CCe_v1.00.xsd");
+        return enviarEProcessarEvento(config, config.getUf(), xmlEventoAssinado, "CCe_v1.00.xsd");
+    }
+
+    public static ResultadoManifestacao manifestarCienciaDaOperacao(Sefaz4jConfig config, String chaveAcesso, String cnpjDestinatario) {
+        exigirChaveAcessoValida(chaveAcesso);
+
+        String xmlEventoAssinado = assinarXmlManifestacaoCiencia(config, chaveAcesso, cnpjDestinatario, 1);
+        ResultadoEvento resultadoEvento = enviarEProcessarEvento(config, UF.AN, xmlEventoAssinado, "envEventoManifDestinatario_v1.00.xsd");
+        return new ResultadoManifestacao(xmlEventoAssinado, resultadoEvento);
+    }
+
+    static String montarXmlManifestacaoCiencia(Sefaz4jConfig config, String chaveAcesso, String cnpjDestinatario, int nSeqEvento) {
+        String detEvento = "<detEvento versao=\"1.00\">"
+            + "<descEvento>Ciencia da Operacao</descEvento>"
+            + "</detEvento>";
+
+        Document documento = EventoXmlBuilder.montar("91", String.valueOf(config.getAmbiente().getTpAmb()), cnpjDestinatario, chaveAcesso, "210210", nSeqEvento, "1.00", detEvento);
+        return serializarDocumento(documento);
+    }
+
+    private static String assinarXmlManifestacaoCiencia(Sefaz4jConfig config, String chaveAcesso, String cnpjDestinatario, int nSeqEvento) {
+        Document documento = EventoXmlBuilder.montar("91", String.valueOf(config.getAmbiente().getTpAmb()), cnpjDestinatario, chaveAcesso, "210210", nSeqEvento, "1.00",
+            "<detEvento versao=\"1.00\"><descEvento>Ciencia da Operacao</descEvento></detEvento>");
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1, "");
+        return serializarDocumento(documento);
     }
 
     public static ResultadoInutilizacao inutilizar(
@@ -364,12 +389,12 @@ public final class Sefaz4jNFe {
             .replace("'", "&apos;");
     }
 
-    private static ResultadoEvento enviarEProcessarEvento(Sefaz4jConfig config, String xmlEventoAssinado, String xsdRaiz) {
+    private static ResultadoEvento enviarEProcessarEvento(Sefaz4jConfig config, UF ufAutorizador, String xmlEventoAssinado, String xsdRaiz) {
         ValidadorXsd.validar(xmlEventoAssinado, "/schemas/nfe/" + xsdRaiz);
 
         String url = config.getUrlRecepcaoEventoOverride() != null
             ? config.getUrlRecepcaoEventoOverride()
-            : EndpointResolver.resolver(NFE_SERVICOS_INI, PREFIXO_SECAO_NFE, config.getUf(), config.getAmbiente(), Servico.RECEPCAO_EVENTO.getChaveIni());
+            : EndpointResolver.resolver(NFE_SERVICOS_INI, PREFIXO_SECAO_NFE, ufAutorizador, config.getAmbiente(), Servico.RECEPCAO_EVENTO.getChaveIni());
 
         String envelope = SoapEnvelopeBuilder.envelopeRecepcaoEvento(xmlEventoAssinado, 1L);
         String respostaBruta = SefazHttpClient.postar(
