@@ -29,6 +29,7 @@ import javax.xml.transform.stream.StreamResult;
 import java.io.ByteArrayInputStream;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 /**
  * Facade de emissão do MDF-e (Manifesto Eletrônico de Documentos Fiscais), mesmo papel de
@@ -51,6 +52,7 @@ public final class Sefaz4jMDFe {
     private static final String EV_CANC_MDFE_XSD = "/schemas/mdfe/evCancMDFe_v3.00.xsd";
     private static final String EV_ENC_MDFE_XSD = "/schemas/mdfe/evEncMDFe_v3.00.xsd";
     private static final String EV_INC_CONDUTOR_MDFE_XSD = "/schemas/mdfe/evIncCondutorMDFe_v3.00.xsd";
+    private static final String EV_INC_DFE_MDFE_XSD = "/schemas/mdfe/evInclusaoDFeMDFe_v3.00.xsd";
     private static final String CONTENT_TYPE_RECEPCAO = "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeRecepcaoSinc/mdfeRecepcaoSinc\"";
     private static final String CONTENT_TYPE_CONSULTA = "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeConsulta/mdfeConsultaMDF\"";
     private static final String CONTENT_TYPE_RECEPCAO_EVENTO = "application/soap+xml; charset=utf-8; action=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeRecepcaoEvento/mdfeRecepcaoEvento\"";
@@ -199,6 +201,58 @@ public final class Sefaz4jMDFe {
         String detEvento = "<detEvento versaoEvento=\"" + MDFE_VERSAO + "\">" + evIncCondutorMDFeFragmento + "</detEvento>";
 
         Document documento = EventoMDFeXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110114", nSeqEvento, MDFE_VERSAO, detEvento);
+        // prefixoAssinatura="" -- mesma exigência do evento de cancelamento acima.
+        AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), MDFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1, "");
+        String xmlEventoAssinado = serializarDocumento(documento);
+
+        return enviarEProcessarEvento(config, xmlEventoAssinado);
+    }
+
+    /**
+     * Evento de inclusão de DF-e (tpEvento 110115) — usado para vincular NF-es a um MDF-e emitido
+     * em carga tardia ({@code ide/indCarregaPosterior="1"}, sem nenhum documento na autorização).
+     * A XSD oficial ({@code evInclusaoDFeMDFe_v3.00.xsd}) só aceita {@link InfDocInclusao} com
+     * {@code chNFe} — não há campo para CT-e nesse evento, diferente do {@code infDoc} da emissão
+     * original do MDF-e.
+     */
+    public static ResultadoEvento incluirDFe(Sefaz4jConfig config, String chaveAcesso, String nProt, String cMunCarrega, String xMunCarrega, List<InfDocInclusao> documentos) {
+        return incluirDFe(config, chaveAcesso, nProt, cMunCarrega, xMunCarrega, documentos, 1);
+    }
+
+    public static ResultadoEvento incluirDFe(Sefaz4jConfig config, String chaveAcesso, String nProt, String cMunCarrega, String xMunCarrega, List<InfDocInclusao> documentos, int nSeqEvento) {
+        exigirChaveAcessoValida(chaveAcesso);
+        exigirNProtValido(nProt);
+        if (documentos == null || documentos.isEmpty()) {
+            throw new IllegalArgumentException("A lista 'documentos' deve ter ao menos um item");
+        }
+        for (InfDocInclusao documento : documentos) {
+            exigirChaveAcessoValida(documento.getChNFe());
+        }
+
+        String cUF = chaveAcesso.substring(0, 2);
+        String cnpj = chaveAcesso.substring(6, 20);
+
+        StringBuilder infDocXml = new StringBuilder();
+        for (InfDocInclusao documento : documentos) {
+            infDocXml.append("<infDoc>")
+                .append("<cMunDescarga>").append(documento.getCMunDescarga()).append("</cMunDescarga>")
+                .append("<xMunDescarga>").append(escaparTextoXml(documento.getXMunDescarga())).append("</xMunDescarga>")
+                .append("<chNFe>").append(documento.getChNFe()).append("</chNFe>")
+                .append("</infDoc>");
+        }
+
+        String evIncDFeMDFeFragmento = "<evIncDFeMDFe xmlns=\"" + MDFE_NAMESPACE + "\">" +
+            "<descEvento>Inclusao DF-e</descEvento>" +
+            "<nProt>" + nProt + "</nProt>" +
+            "<cMunCarrega>" + cMunCarrega + "</cMunCarrega>" +
+            "<xMunCarrega>" + escaparTextoXml(xMunCarrega) + "</xMunCarrega>" +
+            infDocXml +
+            "</evIncDFeMDFe>";
+        ValidadorXsd.validar(evIncDFeMDFeFragmento, EV_INC_DFE_MDFE_XSD);
+
+        String detEvento = "<detEvento versaoEvento=\"" + MDFE_VERSAO + "\">" + evIncDFeMDFeFragmento + "</detEvento>";
+
+        Document documento = EventoMDFeXmlBuilder.montar(cUF, String.valueOf(config.getAmbiente().getTpAmb()), cnpj, chaveAcesso, "110115", nSeqEvento, MDFE_VERSAO, detEvento);
         // prefixoAssinatura="" -- mesma exigência do evento de cancelamento acima.
         AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), MDFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1, "");
         String xmlEventoAssinado = serializarDocumento(documento);

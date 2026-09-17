@@ -658,6 +658,89 @@ public class Sefaz4jMDFeTest {
         Sefaz4jMDFe.incluirCondutor(config, "chave-invalida", "Jose da Silva", "12345678909");
     }
 
+    @Test
+    public void incluirDFeRetornaEventoRegistrado() {
+        AtomicReference<String> corpoCapturado = new AtomicReference<>();
+        servidor.createContext("/evento-incluir-dfe", exchange -> {
+            String corpoRecebido = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            corpoCapturado.set(corpoRecebido);
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><mdfeResultMsg xmlns=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeRecepcaoEvento\">" +
+                "<retEventoMDFe xmlns=\"http://www.portalfiscal.inf.br/mdfe\" versao=\"3.00\"><infEvento>" +
+                "<tpAmb>2</tpAmb><verAplic>RS_1.0.0</verAplic><cOrgao>35</cOrgao>" +
+                "<cStat>135</cStat><xMotivo>Evento registrado e vinculado ao MDF-e</xMotivo>" +
+                "<chMDFe>35250812345678000195580010000001231123456789</chMDFe>" +
+                "<tpEvento>110115</tpEvento><xEvento>Inclusao DF-e</xEvento><nSeqEvento>1</nSeqEvento>" +
+                "<dhRegEvento>2025-08-12T10:16:00-03:00</dhRegEvento>" +
+                "</infEvento></retEventoMDFe>" +
+                "</mdfeResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+        config.setUrlRecepcaoEventoOverride("https://localhost:" + servidor.getAddress().getPort() + "/evento-incluir-dfe");
+
+        ResultadoEvento resultado = Sefaz4jMDFe.incluirDFe(
+            config,
+            "35250812345678000195580010000001231123456789",
+            "935250000012345",
+            "3550308",
+            "Sao Paulo",
+            java.util.List.of(new InfDocInclusao("3304557", "Rio de Janeiro", "35250812345678000195550010000001231123456780"))
+        );
+
+        assertTrue(resultado.isOk());
+        assertEquals("135", resultado.getCStat());
+        assertTrue(corpoCapturado.get().contains("<tpEvento>110115</tpEvento>"));
+        assertTrue(corpoCapturado.get().contains("<nProt>935250000012345</nProt>"));
+        assertTrue(corpoCapturado.get().contains("<cMunCarrega>3550308</cMunCarrega>"));
+        assertTrue(corpoCapturado.get().contains("<chNFe>35250812345678000195550010000001231123456780</chNFe>"));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void incluirDFeRejeitaListaDeDocumentosVazia() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jMDFe.incluirDFe(
+            config,
+            "35250812345678000195580010000001231123456789",
+            "935250000012345",
+            "3550308",
+            "Sao Paulo",
+            java.util.List.of()
+        );
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void incluirDFeRejeitaChNFeInvalida() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jMDFe.incluirDFe(
+            config,
+            "35250812345678000195580010000001231123456789",
+            "935250000012345",
+            "3550308",
+            "Sao Paulo",
+            java.util.List.of(new InfDocInclusao("3304557", "Rio de Janeiro", "chave-invalida"))
+        );
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void incluirDFeRejeitaNProtComFormatoInvalido() {
+        Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
+
+        Sefaz4jMDFe.incluirDFe(
+            config,
+            "35250812345678000195580010000001231123456789",
+            "nao-e-um-numero",
+            "3550308",
+            "Sao Paulo",
+            java.util.List.of(new InfDocInclusao("3304557", "Rio de Janeiro", "35250812345678000195550010000001231123456780"))
+        );
+    }
+
     /**
      * Assinatura estruturalmente bem-formada mas criptograficamente falsa de propósito, mesmo
      * padrão de {@code Sefaz4jCTeTest.xmlCteAssinadoValido()}: {@code ds:Signature} é obrigatório
