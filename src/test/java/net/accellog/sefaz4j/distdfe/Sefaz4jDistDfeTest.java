@@ -21,5 +21,7 @@ public class Sefaz4jDistDfeTest {
         String envelope = Sefaz4jDistDfe.montarEnvelopeSoap(TipoDocumentoDistDfe.CTE, distDFeIntXml);
 
         assertTrue(envelope.contains("<cteDistDFeInteresse xmlns=\"http://www.portalfiscal.inf.br/cte/wsdl/CTeDistribuicaoDFe\">"));
+        assertTrue(envelope.contains("<cteDadosMsg>"));
+        assertTrue(envelope.contains(distDFeIntXml));
     }
 }
