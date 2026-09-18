@@ -11,22 +11,31 @@ public final class Sefaz4jDistDfe {
     }
 
     public static ResultadoDistribuicaoDFe distribuicaoPorUltNSU(TipoDocumentoDistDfe tipo, Sefaz4jConfig config, Integer cUFAutor, String cnpjCpf, String ultNSU) {
+        exigirCUFAutorSeObrigatorio(tipo, cUFAutor);
         String xml = DistDfeIntXmlBuilder.porUltNsu(tipo, config.getAmbiente().getTpAmb(), cUFAutor, cnpjCpf, ultNSU);
         return executar(tipo, config, xml);
     }
 
     public static ResultadoDistribuicaoDFe distribuicaoPorNSU(TipoDocumentoDistDfe tipo, Sefaz4jConfig config, Integer cUFAutor, String cnpjCpf, String nsu) {
+        exigirCUFAutorSeObrigatorio(tipo, cUFAutor);
         String xml = DistDfeIntXmlBuilder.porNsu(tipo, config.getAmbiente().getTpAmb(), cUFAutor, cnpjCpf, nsu);
         return executar(tipo, config, xml);
     }
 
     public static ResultadoDistribuicaoDFe distribuicaoPorChave(TipoDocumentoDistDfe tipo, Sefaz4jConfig config, Integer cUFAutor, String cnpjCpf, String chave) {
+        exigirCUFAutorSeObrigatorio(tipo, cUFAutor);
         String xml = DistDfeIntXmlBuilder.porChave(tipo, config.getAmbiente().getTpAmb(), cUFAutor, cnpjCpf, chave);
         return executar(tipo, config, xml);
     }
 
+    private static void exigirCUFAutorSeObrigatorio(TipoDocumentoDistDfe tipo, Integer cUFAutor) {
+        if (tipo.isCUFAutorObrigatorio() && cUFAutor == null) {
+            throw new IllegalArgumentException("cUFAutor e obrigatorio para Distribuicao de DFe de " + tipo);
+        }
+    }
+
     private static ResultadoDistribuicaoDFe executar(TipoDocumentoDistDfe tipo, Sefaz4jConfig config, String distDFeIntXml) {
-        ValidadorXsd.validar(distDFeIntXml, "/schemas/distdfe/distDFeInt_v1.01.xsd");
+        ValidadorXsd.validar(distDFeIntXml, tipo.getXsdRequisicao());
 
         String url = config.getUrlDistribuicaoDFeOverride() != null
             ? config.getUrlDistribuicaoDFeOverride()

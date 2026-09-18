@@ -23,7 +23,7 @@ public final class DistDfeIntXmlBuilder {
             ? "<CNPJ>" + cnpjCpf + "</CNPJ>"
             : "<CPF>" + cnpjCpf + "</CPF>";
 
-        return "<distDFeInt versao=\"1.01\" xmlns=\"" + tipo.getNamespaceDocumento() + "\">"
+        return "<distDFeInt versao=\"" + tipo.getVersaoDocumento() + "\" xmlns=\"" + tipo.getNamespaceDocumento() + "\">"
             + "<tpAmb>" + tpAmb + "</tpAmb>"
             + cUFAutorXml
             + documentoIdentificador

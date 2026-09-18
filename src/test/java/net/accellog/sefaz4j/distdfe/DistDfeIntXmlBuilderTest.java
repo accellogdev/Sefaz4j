@@ -23,9 +23,11 @@ public class DistDfeIntXmlBuilderTest {
 
     @Test
     public void porNsuMontaConsNsu() {
-        String xml = DistDfeIntXmlBuilder.porNsu(TipoDocumentoDistDfe.CTE, 2, null, "12345678000199", "42");
+        // CTe reaproveita o namespace e a versao do distDFeInt do NFe (ver TipoDocumentoDistDfe) --
+        // cUFAutor obrigatorio e' validado na facade Sefaz4jDistDfe, nao no builder.
+        String xml = DistDfeIntXmlBuilder.porNsu(TipoDocumentoDistDfe.CTE, 2, 35, "12345678000199", "42");
         assertTrue(xml.contains("<consNSU><NSU>000000000000042</NSU></consNSU>"));
-        assertTrue(xml.contains("xmlns=\"http://www.portalfiscal.inf.br/cte\""));
+        assertTrue(xml.contains("<distDFeInt versao=\"1.00\" xmlns=\"http://www.portalfiscal.inf.br/nfe\">"));
     }
 
     @Test
