@@ -46,7 +46,9 @@ public final class Sefaz4jDistDfe {
 
         String respostaBruta = SefazHttpClient.postar(url, contentType, envelope, config.getPfxBytes(), config.getSenhaPfx(), config.getTimeout());
 
-        return RetDistDFeIntParser.parsear(respostaBruta);
+        ResultadoDistribuicaoDFe resultado = RetDistDFeIntParser.parsear(respostaBruta);
+        return new ResultadoDistribuicaoDFe(resultado.isOk(), resultado.getCStat(), resultado.getXMotivo(),
+            resultado.getUltNSU(), resultado.getMaxNSU(), resultado.getDocumentos(), distDFeIntXml, respostaBruta);
     }
 
     static String montarEnvelopeSoap(TipoDocumentoDistDfe tipo, String distDFeIntXml) {
