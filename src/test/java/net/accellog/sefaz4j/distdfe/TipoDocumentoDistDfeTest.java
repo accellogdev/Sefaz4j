@@ -23,10 +23,11 @@ public class TipoDocumentoDistDfeTest {
     @Test
     public void cteTemMetadadosCorretos() {
         TipoDocumentoDistDfe tipo = TipoDocumentoDistDfe.CTE;
-        // O distDFeInt do CTe reaproveita o namespace e o XSD do NFe (confirmado no XSD oficial
-        // distDFeInt_v1.00.xsd do CTe, targetNamespace "http://www.portalfiscal.inf.br/nfe") --
-        // so o corpo SOAP e' especifico do CTe.
-        assertEquals("http://www.portalfiscal.inf.br/nfe", tipo.getNamespaceDocumento());
+        // namespace proprio do CTe -- ver comentario em TipoDocumentoDistDfe.CTE (o XSD de
+        // exemplo do ACBr sob targetNamespace "nfe" e' uma copia desatualizada do de NFe;
+        // confirmado empiricamente contra a SEFAZ real, que rejeitava com cStat=215 usando "nfe"
+        // e cuja propria resposta retDistDFeInt vem com xmlns "cte").
+        assertEquals("http://www.portalfiscal.inf.br/cte", tipo.getNamespaceDocumento());
         assertEquals("1.00", tipo.getVersaoDocumento());
         assertEquals("/schemas/distdfe/distDFeInt_cte_v1.00.xsd", tipo.getXsdRequisicao());
         assertEquals("http://www.portalfiscal.inf.br/cte/wsdl/CTeDistribuicaoDFe", tipo.getNamespaceWsdl());

@@ -115,14 +115,18 @@ public class Sefaz4jDistDfeE2ETest {
         assertEquals("000000000000020", resultado.getMaxNSU());
     }
 
-    // Prova direta do finding #1: antes da correção, TipoDocumentoDistDfe.CTE.getNamespaceDocumento()
-    // devolvia "http://www.portalfiscal.inf.br/cte" e Sefaz4jDistDfe.executar validava SEMPRE contra
-    // /schemas/distdfe/distDFeInt_v1.01.xsd (targetNamespace nfe, versao 1.01) -- então TODA chamada
-    // de Distribuição de DFe para CTe falhava com ValidacaoXsdException antes mesmo de tocar rede
-    // (violação de xmlns e de versao). Depois da correção, o documento é montado com xmlns "nfe"
-    // (namespace real do distDFeInt do CTe, confirmado lendo o XSD oficial
-    // distDFeInt_v1.00.xsd da SEFAZ) e versao "1.00", validado contra o XSD do CTe
-    // (distDFeInt_cte_v1.00.xsd) -- e a chamada de ponta a ponta passa a funcionar.
+    // Prova direta do finding #1 original: antes da primeira correção, TipoDocumentoDistDfe.CTE
+    // usava distDFeInt_v1.01.xsd (o do NFe) direto, então toda chamada falhava antes de tocar
+    // rede. Depois passou a usar namespace "nfe" + versao "1.00" com XSD próprio
+    // (distDFeInt_cte_v1.00.xsd) -- só que esse XSD "próprio" era, na prática, uma cópia
+    // byte-a-byte do de NFe (o exemplo que o ACBr distribui em Schemas/CTe/ não é uma fonte
+    // curada especificamente para CTe, é datado de 2017 e idêntico ao de Schemas/NFe/). Rodando
+    // contra a SEFAZ real (hom1.cte.fazenda.gov.br) essa versão ainda falhava, com
+    // cStat=215 "Falha no esquema xml" -- e a própria resposta da SEFAZ já vinha com
+    // xmlns="http://www.portalfiscal.inf.br/cte" no retDistDFeInt. TipoDocumentoDistDfe.CTE
+    // agora usa namespace "cte" (confirmado também no código Delphi real do ACBr,
+    // ACBrCTe.Consts.NAME_SPACE_CTE) e os XSDs *_cte_v1.00.xsd foram corrigidos para
+    // targetNamespace "cte".
     @Test
     public void distribuicaoPorUltNsuExecutaEndToEndParaCte() {
         servidor.createContext("/dist-dfe-cte", exchange -> {
@@ -165,7 +169,7 @@ public class Sefaz4jDistDfeE2ETest {
     // continua sendo uma ValidacaoXsdException legível, não um erro de rede/parsing confuso.
     @Test(expected = ValidacaoXsdException.class)
     public void xmlDeCteSemCUFAutorFalhaNaValidacaoXsd() {
-        String xmlSemCUFAutor = "<distDFeInt versao=\"1.00\" xmlns=\"http://www.portalfiscal.inf.br/nfe\">"
+        String xmlSemCUFAutor = "<distDFeInt versao=\"1.00\" xmlns=\"http://www.portalfiscal.inf.br/cte\">"
             + "<tpAmb>2</tpAmb><CNPJ>12345678000199</CNPJ>"
             + "<distNSU><ultNSU>000000000000000</ultNSU></distNSU>"
             + "</distDFeInt>";
@@ -181,7 +185,7 @@ public class Sefaz4jDistDfeE2ETest {
             + "<soap:Body>"
             + "<" + elementoResponse + " xmlns=\"http://www.portalfiscal.inf.br/" + prefixo + "/wsdl/" + servicoWsdl + "\">"
             + "<" + elementoResult + ">"
-            + "<retDistDFeInt versao=\"" + versao + "\" xmlns=\"http://www.portalfiscal.inf.br/nfe\">"
+            + "<retDistDFeInt versao=\"" + versao + "\" xmlns=\"http://www.portalfiscal.inf.br/" + prefixo + "\">"
             + "<tpAmb>2</tpAmb><verAplic>AN_1.0.0</verAplic>"
             + "<cStat>" + cStat + "</cStat><xMotivo>" + xMotivo + "</xMotivo>"
             + "<dhResp>2025-09-17T10:00:00-03:00</dhResp>"

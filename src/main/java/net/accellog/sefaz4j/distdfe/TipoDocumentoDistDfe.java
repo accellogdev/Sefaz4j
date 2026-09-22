@@ -1,10 +1,6 @@
 package net.accellog.sefaz4j.distdfe;
 
 public enum TipoDocumentoDistDfe {
-    // O distDFeInt/retDistDFeInt do CTe reaproveita o namespace e o XSD do NFe (targetNamespace
-    // "http://www.portalfiscal.inf.br/nfe" no distDFeInt_v1.00.xsd oficial do CTe) -- so o corpo
-    // SOAP (namespaceWsdl/elementoBodySoap) e' de fato especifico do CTe. Confirmado lendo os XSDs
-    // oficiais copiados para src/main/resources/schemas/distdfe/*_cte_v1.00.xsd.
     NFE(
         "http://www.portalfiscal.inf.br/nfe",
         "1.01",
@@ -16,8 +12,17 @@ public enum TipoDocumentoDistDfe {
         "NFeDistribuicaoDFe_1.01",
         false
     ),
+    // namespaceDocumento = "http://www.portalfiscal.inf.br/cte" (nao "nfe"): o
+    // distDFeInt_v1.00.xsd que o ACBr distribui em Exemplos/ACBrDFe/Schemas/CTe/ e' uma copia
+    // byte-a-byte do mesmo arquivo em Schemas/NFe/ (confirmado com diff) -- um artefato de
+    // exemplo desatualizado (datado 2017), nao uma fonte curada especificamente para CTe. O
+    // codigo Delphi real do ACBr que efetivamente conversa com a SEFAZ
+    // (ACBrCTe.Consts.NAME_SPACE_CTE, usado em ACBrCTeWebServices.pas ao montar o
+    // TDistDFeInt para CTe) usa "http://www.portalfiscal.inf.br/cte". Confirmado empiricamente:
+    // com "nfe" a SEFAZ (hom1.cte.fazenda.gov.br) rejeitava com cStat=215 "Falha no esquema
+    // xml" em toda chamada.
     CTE(
-        "http://www.portalfiscal.inf.br/nfe",
+        "http://www.portalfiscal.inf.br/cte",
         "1.00",
         "/schemas/distdfe/distDFeInt_cte_v1.00.xsd",
         "http://www.portalfiscal.inf.br/cte/wsdl/CTeDistribuicaoDFe",
