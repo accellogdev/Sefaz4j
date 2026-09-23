@@ -14,8 +14,10 @@ third document type (see "## NFS-e (Padrão Nacional)" below) and the architectu
 transport instead of SOAP, and a single national endpoint instead of per-UF ones. MDFe (Manifesto
 Eletrônico de Documentos Fiscais) 3.00 is the fourth document type (see "## MDFe (Padrão SOAP, 3.00) —
 emissão + ciclo de vida" below): architecturally it swings back toward NFe rather than CTe or NFS-e —
-SOAP over mutual TLS, per-UF/Ambiente endpoints, and NFe's lot+recibo emission flow (`MDFeRecepcao`/
-`MDFeRetRecepcao` polling), not CTe's synchronous one.
+SOAP over mutual TLS and per-UF/Ambiente endpoints (its emission now goes through the synchronous
+`MDFeRecepcaoSinc`, like CTe — see the MDFe section). Separately from the four document types,
+`net.accellog.sefaz4j.distdfe` implements Distribuição de DFe (NFe/CTe document download by NSU/chave
+from the Ambiente Nacional) — see "## Distribuição de DFe" below.
 
 ## Build & test
 
@@ -23,19 +25,22 @@ SOAP over mutual TLS, per-UF/Ambiente endpoints, and NFe's lot+recibo emission f
 mvn compile                              # compile (also runs JAXB codegen, see below)
 mvn test                                  # run the unit/integration-lite suite (JUnit 4)
 mvn test -Dtest=ClassName#methodName      # run a single test method
-mvn test -Pintegration-tests               # also run HomologacaoIntegrationTest (see below)
+mvn test -Pintegration-tests               # also run the **/integration/** tests (see below)
 ```
 
 Java 25. There is no Spring Boot plugin and no packaged executable — `mvn package` just produces a
 plain library jar.
 
-### The `HomologacaoIntegrationTest`
+### Integration tests (real SEFAZ Homologação)
 
-`src/test/java/.../nfe/integration/HomologacaoIntegrationTest.java` calls the real SEFAZ Homologação
-environment end-to-end. It is excluded by the default `maven-surefire-plugin` config (`**/integration/**`)
-and only re-included by the `integration-tests` Maven profile. Even then, it self-skips
+`nfe/integration/HomologacaoIntegrationTest`, `cte/integration/HomologacaoIntegrationTestCTe` and
+`distdfe/integration/Sefaz4jDistDfeIntegrationTest` call the real SEFAZ Homologação environment
+end-to-end. They are excluded by the default `maven-surefire-plugin` config (`**/integration/**`)
+and only re-included by the `integration-tests` Maven profile. Even then, they self-skip
 (`org.junit.Assume`) unless the environment variables `SEFAZ4J_TEST_PFX_PATH` and
-`SEFAZ4J_TEST_PFX_SENHA` point at a real A1 certificate. `mvn test` alone never hits the network.
+`SEFAZ4J_TEST_PFX_SENHA` point at a real A1 certificate (the DistDFe one also needs
+`SEFAZ4J_TEST_CNPJ`). `mvn test` alone never hits the network. MDFe and NFS-e have no integration
+test.
 
 ## Public API
 
@@ -52,6 +57,11 @@ documented in their own sections below):
   montam e assinam um evento (`infEvento`, não `infNFe`) e o enviam a `RecepcaoEvento4`.
   `inutilizar(Sefaz4jConfig, String cUF, String ano, String cnpj, String serie, String nNFIni, String nNFFin, String justificativa)`
   inutiliza uma faixa de numeração não usada — não depende de uma NFe específica.
+  `manifestarCienciaDaOperacao(Sefaz4jConfig, String chaveAcesso, String cnpjDestinatario)` envia o
+  evento `210210` (Manifestação do Destinatário) — assinado pelo *destinatário*, com `cOrgao=91` e
+  sempre roteado para `UF.AN` (Ambiente Nacional), nunca para a UF do config; validado contra
+  `confRecebto_v1.00.xsd`. Retorna `ResultadoManifestacao` (embrulha o `ResultadoEvento` + o XML
+  assinado enviado).
 - **`Sefaz4jConfig`** — UF, `Ambiente`, PFX bytes + password, optional URL overrides
   (`urlAutorizacaoOverride` via constructor, `setUrlRetAutorizacaoOverride` fluently — mainly for tests/proxies),
   and fluent setters for `timeout`/`maxTentativasPolling`/`intervaloPolling` (defaults: 30s, 5, 5s).
@@ -69,7 +79,7 @@ an unresolved still-processing state is never silently turned into `ok=false`). 
 propagates as one of three unchecked exception types instead:
 
 - `net.accellog.sefaz4j.assinatura.CertificadoException` — bad PFX/password, or the signing step itself failed.
-- `net.accellog.sefaz4j.validacao.ValidacaoXsdException` — the built/given XML fails XSD validation (carries `getViolacoes()`).
+- `net.accellog.sefaz4j.validacao.ValidacaoXsdException` — the built/given XML fails XSD validation (carries `getViolacoes()` and `getXmlInvalido()`, the exact XML that failed).
 - `net.accellog.sefaz4j.webservice.ComunicacaoException` — HTTP/SOAP failure, unparseable SEFAZ response, or
   the lot still being `103` after `ReciboPoller` exhausts its polling attempts (an ambiguous outcome, deliberately
   not reported as `ok=false` — the caller must not blindly retry an NFe of unknown status).
@@ -262,28 +272,30 @@ non-2xx without a valid `"erros"` array as a failure.
 
 ## MDFe (Padrão SOAP, 3.00) — emissão + ciclo de vida
 
-`net.accellog.sefaz4j.mdfe` is the fourth document type, and architecturally sits closer to NFe than
-to CTe or NFS-e: SOAP over mutual TLS, per-UF/Ambiente endpoints (`mdfe-servicos.ini`), and — unlike
-CTe's synchronous `CTeRecepcaoSinc` — a lot+recibo emission flow. `MDFeRecepcao` accepts the lot and
-may answer `cStat 103` ("em processamento"), in which case `Sefaz4jMDFe.emitir` polls
-`MDFeRetRecepcao` via `ReciboPoller`, exactly like `Sefaz4jNFe.emitir` does. This isn't a design
-choice made by this library — MDFe 3.00's own WSDL splits synchronous and asynchronous submission
-into two entirely separate services rather than exposing an `enviMDFe`-level `indSinc` switch, and
-this library implements only the asynchronous pair (`MDFeRecepcao`/`MDFeRetRecepcao`), confirmed
-against the ACBr reference implementation.
+`net.accellog.sefaz4j.mdfe` is the fourth document type: SOAP over mutual TLS, per-UF/Ambiente
+endpoints (`mdfe-servicos.ini`). **Emission uses the synchronous `MDFeRecepcaoSinc`** (`Servico
+.MDFE_RECEPCAO_SINC`, `SoapEnvelopeBuilder.envelopeRecepcaoSinc`), with the signed `<MDFe>`
+gzip+Base64-compressed into `mdfeDadosMsg` (`webservice.GzipBase64`) — the same pattern as CTe's
+`CTeRecepcaoSinc`. The library originally implemented the asynchronous lot pair (`MDFeRecepcao`/
+`MDFeRetRecepcao`), but `MDFeRecepcao` answered HTTP 404 when tested live against SVRS on 2026-09-09
+(apparently discontinued), so emission was switched to the Sinc service. What's left of the old flow:
+if the response still comes back `cStat 103`, `enviarEProcessar` falls back to polling
+`MDFeRetRecepcao` via `ReciboPoller` (and throws `ComunicacaoException` if it's still `103` after the
+polling attempts run out); `envelopeRecepcao`/`MDFE_RECEPCAO` remain in the code but emission no
+longer uses them.
 
 **No inutilização for MDFe, and for a stronger reason than CTe's.** CTe's inutilização was merely
 *discontinued* for v4.00 (see the CTe section above); MDFe's inutilização **never existed in the
 standard at all** — confirmed by its total absence anywhere in the ACBr reference implementation, not
 just for one version. There is no `Sefaz4jMDFe.inutilizar` and none is planned.
 
-- **`Sefaz4jMDFe`** — the facade, with 6 methods:
+- **`Sefaz4jMDFe`** — the facade, with 7 methods:
   - `emitir(Sefaz4jConfig config, TMDFe mdfe): ResultadoEmissao` — checks `infMDFe/ide/tpAmb` (when
     present) against the configured `Ambiente`, throwing `IllegalArgumentException` early on a
     mismatch (the same tpAmb-vs-Ambiente guard `Sefaz4jNFe`/`Sefaz4jCTe` already have); builds the
     chave de acesso + `Document` via `MDFeXmlBuilder`, signs `infMDFe`, XSD-validates against
-    `mdfe_v3.00.xsd`, transmits to `MDFeRecepcao`, and polls `MDFeRetRecepcao` if the lot comes back
-    `103`.
+    `mdfe_v3.00.xsd`, transmits to `MDFeRecepcaoSinc` (gzip+Base64), and polls `MDFeRetRecepcao`
+    only if the response comes back `103`.
   - `enviarXmlAssinado(Sefaz4jConfig config, String xmlAssinado): ResultadoEmissao` — skips straight
     to validate+transmit(+poll) for an already-signed MDF-e XML.
   - `consultarSituacao(Sefaz4jConfig config, String chaveAcesso): ResultadoConsulta` — builds and
@@ -304,37 +316,70 @@ just for one version. There is no `Sefaz4jMDFe.inutilizar` and none is planned.
     same overload pattern `Sefaz4jCTe`/`Sefaz4jNFe`'s `corrigirCartaDeCorrecao` already use — needed
     because `evIncCondutorMDFe_v3.00.xsd` only allows one `condutor` per event, so a second driver on
     the same manifest requires a second event with `nSeqEvento=2`.
-  - All three event methods build the event via the shared `EventoMDFeXmlBuilder.montar(...)`, sign
+  - `incluirDFe(Sefaz4jConfig config, String chaveAcesso, String nProt, String cMunCarrega, String
+    xMunCarrega, List<InfDocInclusao> documentos[, int nSeqEvento]): ResultadoEvento` — tpEvento
+    `110115`, used to attach NF-es to an MDF-e issued with late loading (`ide/indCarregaPosterior="1"`).
+    `evInclusaoDFeMDFe_v3.00.xsd` accepts only `chNFe` in `InfDocInclusao`: this event has no field
+    for CT-e, unlike the original emission's `infDoc`.
+  - All four event methods build the event via the shared `EventoMDFeXmlBuilder.montar(...)`, sign
     `infEvento`, XSD-validate the event-specific fragment first (`evCancMDFe_v3.00.xsd`/
-    `evEncMDFe_v3.00.xsd`/`evIncCondutorMDFe_v3.00.xsd`) and then the assembled `eventoMDFe_v3.00.xsd`
-    document (the same two-pass validation convention already used for CTe/NFS-e events), then POST
-    to `RecepcaoEvento_3.00` — returning a `ResultadoEvento` whose `isOk()` is strict for `cStat 135`.
+    `evEncMDFe_v3.00.xsd`/`evIncCondutorMDFe_v3.00.xsd`/`evInclusaoDFeMDFe_v3.00.xsd`) and then the
+    assembled `eventoMDFe_v3.00.xsd` document (the same two-pass validation convention already used
+    for CTe/NFS-e events), then POST to `RecepcaoEvento_3.00`, returning a `ResultadoEvento` whose
+    `isOk()` is strict for `cStat 135`.
 - **Explicitly out of scope**, the same "Plano B" precedent already used for NFS-e's confirmação/
   rejeição events:
   - `MDFeConsultaMDFeNaoEnc` — an operational report ("which MDF-es for this CNPJ are still open"),
     not a per-document operation, so it doesn't fit this library's chaveAcesso-scoped method shape.
-  - The four v3.00-only payment/GNRE events (`evConfirmaServMDFe`/`evPagtoOperMDFe`/
-    `evAlteracaoPagtoServMDFe`/`evInclusaoDFeMDFe`) — a separate payment-confirmation workflow, not
-    part of the core emissão/cancelamento/encerramento/condutor lifecycle this plan scoped.
+  - The v3.00-only payment events (`evConfirmaServMDFe`/`evPagtoOperMDFe`/
+    `evAlteracaoPagtoServMDFe`) — a separate payment-confirmation workflow, not part of the core
+    lifecycle. (`evInclusaoDFeMDFe` was originally in this list; it has since been implemented as
+    `incluirDFe`, see above.)
   - Fleet/manifest-registration services (`mdfeManCadTransp`/`Frota`) — pre-registering vehicles/
     drivers with SEFAZ is a distinct concern from emitting and managing MDF-e documents themselves.
   - `distMDFe` (document distribution/download) — a pull-style query for documents addressed to a
     given CNPJ, not part of the emit-and-manage lifecycle this library covers.
 - **`net.accellog.sefaz4j.mdfe.Sefaz4jConfig`** — `UF`, `Ambiente`, PFX bytes + password, optional
-  `urlRecepcaoOverride` (constructor arg), fluent `setUrlRetRecepcaoOverride`/
+  `urlRecepcaoOverride` (constructor arg; overrides the `MDFeRecepcaoSinc` URL), fluent `setUrlRetRecepcaoOverride`/
   `setUrlConsultaProtocoloOverride`/`setUrlRecepcaoEventoOverride`, and fluent
   `setTimeout`/`setMaxTentativasPolling`/`setIntervaloPolling` (defaults: 30s, 5, 5s — same as NFe).
   The override method names use MDFe's own WSDL vocabulary — "Recepção"/"RetRecepção" — rather than
   NFe's "Autorização", because MDFe's actual services are never called `MDFeAutorizacao`.
 - **`net.accellog.sefaz4j.mdfe.ResultadoEmissao`/`ResultadoConsulta`/`ResultadoEvento`** — same shape
   as NFe's: `isOk()` strict for the operation's specific success `cStat` (`100` for emissão/consulta,
-  `135` for any of the three events), `getCStat()`/`getXMotivo()` always populated;
+  `135` for any of the four events), `getCStat()`/`getXMotivo()` always populated;
   `ResultadoEmissao`/`ResultadoConsulta` expose `getChMDFe()` (chave de acesso, MDFe's own naming, not
   `getChNFe()`); `getXmlAutorizado()` wraps in `<mdfeProc>` when a `protMDFe` is present.
 - **Chave de acesso uses the shared `chave` package, unlike NFS-e.** `MDFeXmlBuilder` calls the same
   root `net.accellog.sefaz4j.chave.ChaveAcessoCalculator` (mod-11) NFe/CTe use — there is no
   `mdfe.chave` package — because MDFe's access key follows the same 44-digit DFe convention, unlike
   NFS-e's unrelated, check-digit-less `infDPS/@Id` scheme.
+
+## Distribuição de DFe (NFe + CTe)
+
+`net.accellog.sefaz4j.distdfe` is a separate facade, `Sefaz4jDistDfe`, that pulls documents addressed
+to a CNPJ/CPF from the Ambiente Nacional. It isn't a fifth document type: one implementation serves
+both NFe and CTe, parameterized by the `TipoDocumentoDistDfe` enum (`NFE`/`CTE`), which holds every
+per-type difference: document namespace + version, request XSD, WSDL namespace, SOAP body element,
+ini file/section prefix/service key, and whether `cUFAutor` is required.
+
+- Three methods, each taking `(TipoDocumentoDistDfe, Sefaz4jConfig, Integer cUFAutor, String cnpjCpf, …)`:
+  `distribuicaoPorUltNSU`, `distribuicaoPorNSU`, `distribuicaoPorChave`. `cUFAutor` is mandatory
+  for CTe (`IllegalArgumentException` if null) and optional for NFe.
+- **`distdfe.Sefaz4jConfig` takes no `UF`.** The endpoint is always resolved with `UF.AN` (the
+  `AN` constant in the shared `UF` enum → `[NFe_AN_*]`/`[CTE_AN_*]` sections of the existing ini files),
+  never from the interested party's state. The only override is `setUrlDistribuicaoDFeOverride`.
+- Flow: `DistDfeIntXmlBuilder` builds `distDFeInt` (not signed) → XSD-validated → wrapped in a SOAP
+  envelope whose data element is `nfeDadosMsg` or `cteDadosMsg` depending on the type →
+  `RetDistDFeIntParser` parses `retDistDFeInt` and gunzips each `docZip` into a `DocumentoDistDfe`
+  (`nsu`/`schema`/`xml`).
+- `ResultadoDistribuicaoDFe` exposes `ultNSU`/`maxNSU`/`documentos` plus `cStat` helpers for driving
+  an NSU loop: `temMaisDocumentos()` (138), `nadaMaisADistribuir()` (137), `consumoIndevido()` (656).
+  `getXmlEnvio()`/`getXmlRetorno()` carry the raw request/response for audit logging only.
+- **CTe's `distDFeInt` uses the `http://www.portalfiscal.inf.br/cte` namespace, not `nfe`**, with its
+  own bundled `schemas/distdfe/distDFeInt_cte_v1.00.xsd`. The CTe copy of the XSD that ACBr ships in its
+  examples is a byte-for-byte duplicate of the NFe one and is misleading. With `nfe`, SEFAZ rejected
+  every call with `cStat 215`. See the comment on `TipoDocumentoDistDfe.CTE`.
 
 ## Package layout
 
@@ -357,7 +402,12 @@ just for one version. There is no `Sefaz4jMDFe.inutilizar` and none is planned.
   also relaxes `jdk.xml.maxOccurLimit` on the specific `SchemaFactory` instance it compiles with (see
   "Key technical facts" below), needed only by the MDFe schema chain.
 - `net.accellog.sefaz4j.webservice` (shared) — `SefazHttpClient` (mutual-TLS `java.net.http.HttpClient`, with per-certificate
-  `SSLContext`/`HttpClient` caching), `RespostaSefazParser`, `RespostaSefaz`, `ComunicacaoException`.
+  `SSLContext`/`HttpClient` caching), `RespostaSefazParser`, `RespostaSefaz`, `ComunicacaoException`,
+  `GzipBase64` (compresses the `*DadosMsg` payload for `CTeRecepcaoSinc`/`MDFeRecepcaoSinc`; without it SEFAZ
+  answers `cStat 244`. Consulta/evento/inutilização and NFe's `NFeAutorizacao4` send plain XML), and
+  `CadeiaCertificadoCompleta`: when a client's PFX contains only the leaf certificate, `SefazHttpClient`
+  downloads the missing intermediate CAs via the certificate's AIA extension before building the
+  `KeyManager`. Without them, SEFAZ's IIS rejects the TLS handshake with "403 Forbidden".
 - `net.accellog.sefaz4j.nfe.webservice` — `SoapEnvelopeBuilder`, `ReciboPoller` (polls `NFeRetAutorizacao4` while `cStat == 103`);
   NFe-specific, not shared.
 - `net.accellog.sefaz4j.cte.webservice` — `SoapEnvelopeBuilder` with `envelopeRecepcaoSinc(String)`/
@@ -365,14 +415,15 @@ just for one version. There is no `Sefaz4jMDFe.inutilizar` and none is planned.
   (no `ReciboPoller` equivalent — see the CTe section above).
 - `net.accellog.sefaz4j.endpoints` (shared) — `EndpointResolver` + `UF`/`Ambiente`, backed by `src/main/resources/endpoints/nfe-servicos.ini`
   (NFe), `cte-servicos.ini` (CTe), and `mdfe-servicos.ini` (MDFe), selected via a path/section-prefix
-  argument to `EndpointResolver.resolver(...)`. NFS-e reuses only the `Ambiente` enum from here (no
+  argument to `EndpointResolver.resolver(...)`. `UF` includes a pseudo-UF `AN` (Ambiente Nacional),
+  used for NFe manifestação and Distribuição de DFe. Tests that iterate "all 27 UFs" must exclude it. NFS-e reuses only the `Ambiente` enum from here (no
   `UF`, no ini file): its single national URLs are hardcoded constants in `Sefaz4jNFSe`
   (`URL_PRODUCAO`/`URL_HOMOLOGACAO`), never routed through `EndpointResolver`.
 - `net.accellog.sefaz4j.nfe.endpoints` — `Servico`; NFe-specific, not shared.
 - `net.accellog.sefaz4j.cte.endpoints` — `Servico` (`CTE_RECEPCAO_SINC`/`CTE_CONSULTA_PROTOCOLO`/
   `CTE_RECEPCAO_EVENTO`); CTe-specific, not shared.
-- `net.accellog.sefaz4j.mdfe.endpoints` — `Servico` (`MDFE_RECEPCAO`/`MDFE_RET_RECEPCAO`/
-  `MDFE_CONSULTA_PROTOCOLO`/`RECEPCAO_EVENTO`); MDFe-specific, not shared.
+- `net.accellog.sefaz4j.mdfe.endpoints` — `Servico` (`MDFE_RECEPCAO_SINC`/`MDFE_RECEPCAO`/
+  `MDFE_RET_RECEPCAO`/`MDFE_CONSULTA_PROTOCOLO`/`RECEPCAO_EVENTO`); MDFe-specific, not shared.
 - `net.accellog.sefaz4j.nfe.model` — **generated** JAXB classes (`TNFe`, `ObjectFactory`, etc.) — do not hand-edit, see below.
 - `net.accellog.sefaz4j.cte.model` — **generated** JAXB classes (`TCTe`, `ObjectFactory`, etc.), from `cte_v4.00.xsd` — do not hand-edit.
 - `net.accellog.sefaz4j.mdfe.model` — **generated** JAXB classes (`TMDFe`, `ObjectFactory`, etc.), from
@@ -393,10 +444,13 @@ just for one version. There is no `Sefaz4jMDFe.inutilizar` and none is planned.
   and `EventoMDFeXmlBuilder` (builds the `eventoMDFe`/`infEvento` event structure by string
   concatenation — no JAXB — reusing NFe's `Id` format `"ID" + tpEvento + chave + nSeqEvento` padded to
   2 digits, unlike CTe's 3-digit padding).
-- `net.accellog.sefaz4j.mdfe.webservice` — `SoapEnvelopeBuilder` (`envelopeRecepcao`/
-  `envelopeRetRecepcao`/`envelopeConsultaSituacao`/`envelopeRecepcaoEvento`) and `ReciboPoller` (polls
-  `MDFeRetRecepcao` while `cStat == 103`, the same role NFe's `ReciboPoller` has); MDFe-specific, not
-  shared.
+- `net.accellog.sefaz4j.mdfe.webservice` — `SoapEnvelopeBuilder` (`envelopeRecepcaoSinc` — the one
+  emission uses — plus `envelopeRecepcao`/`envelopeRetRecepcao`/`envelopeConsultaSituacao`/
+  `envelopeRecepcaoEvento`) and `ReciboPoller` (the `cStat 103` fallback, polling `MDFeRetRecepcao`);
+  MDFe-specific, not shared.
+- `net.accellog.sefaz4j.distdfe` — `Sefaz4jDistDfe` facade, its UF-less `Sefaz4jConfig`,
+  `TipoDocumentoDistDfe`, `DistDfeIntXmlBuilder`, `RetDistDFeIntParser`, and the result DTOs. See the
+  "Distribuição de DFe" section above.
 
 ## Key technical facts for future sessions
 
@@ -428,6 +482,10 @@ just for one version. There is no `Sefaz4jMDFe.inutilizar` and none is planned.
   `schemas/nfe/xmldsig-core-schema_v1.01.xsd` (`<xsd:restriction>`, not a default) — SEFAZ mandates it for
   the DFe signature itself. This is unrelated to TLS (mutual-TLS to SEFAZ negotiates its own, unpinned,
   modern TLS version).
+- **Signatures must be unprefixed (`<Signature xmlns="…">`, not `<ds:Signature>`).** Every
+  `AssinadorXml.assinar(...)` call passes `prefixoAssinatura=""`, overriding Apache Santuario's
+  default `ds:`. SEFAZ rejects the prefixed form for NFe (`cStat 587`), CT-e (`cStat 598`) and
+  NFS-e (`E1228`), and MDFe follows the same rule. New signing code must pass `""` too.
 - **Bundled XSDs are trusted**; only `DocumentBuilderFactory` instances that parse *remote* SEFAZ response
   XML (`RespostaSefazParser`, the protocol-fragment parsing in `Sefaz4jNFe`) are hardened against
   XXE/DOCTYPE — `ValidadorXsd`'s `SchemaFactory` loading the bundled schema chain is intentionally left as-is.
