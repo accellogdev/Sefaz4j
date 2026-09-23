@@ -1,7 +1,6 @@
 package net.accellog.sefaz4j.nfe;
 
 import net.accellog.sefaz4j.assinatura.AssinadorXml;
-import net.accellog.sefaz4j.endpoints.Ambiente;
 import net.accellog.sefaz4j.endpoints.EndpointResolver;
 import net.accellog.sefaz4j.endpoints.UF;
 import net.accellog.sefaz4j.nfe.endpoints.Servico;
