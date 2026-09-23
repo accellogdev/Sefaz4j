@@ -563,5 +563,6 @@ ini file/section prefix/service key, and whether `cUFAutor` is required.
   (lowercase) for this reason, distinct from the project `<name>` (`Accellog`). Consumers also need a
   GitHub PAT with `read:packages` even for this public repo (see README for the `settings.xml` snippet) —
   GitHub Packages has no anonymous download for Maven.
-- Current version follows a Maven-native pre-release qualifier scheme (`1.0.0-alpha-1`, `-alpha-2`, ...)
-  so it sorts correctly before the eventual `1.0.0` release per Maven's version comparator.
+- Pre-releases used a Maven-native qualifier scheme (`1.0.0-alpha-1`, `-alpha-2`, ...) so they sort
+  before `1.0.0` per Maven's version comparator; `pom.xml` is now at `1.0.0`. Keep the README's
+  dependency snippet (`<version>`) in sync when bumping.

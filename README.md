@@ -5,15 +5,17 @@ documentos fiscais eletrônicos brasileiros. O objetivo final é cobrir **NFe**,
 **NFSe**; hoje estão implementados o **ciclo de vida completo da NFe 4.00**, o **ciclo de vida
 completo do CTe 4.00** (emissão + consulta/cancelamento/CC-e — a inutilização foi descontinuada pela
 SEFAZ para o CTe 4.00, ver seção do CTe abaixo), o **ciclo de vida completo do MDFe 3.00** (emissão +
-consulta/cancelamento/encerramento/inclusão de condutor) e a **NFS-e Padrão Nacional** (emissão, consulta, cancelamento e cancelamento
-por substituição, ver seção da NFS-e abaixo; confirmação/rejeição ainda não implementada).
+consulta/cancelamento/encerramento/inclusão de condutor/inclusão de DF-e) e a **NFS-e Padrão Nacional** (emissão, consulta, cancelamento e cancelamento
+por substituição, ver seção da NFS-e abaixo; confirmação/rejeição ainda não implementada). Além dos
+documentos emitidos, a lib também faz a **Distribuição de DFe** (download de NF-e/CT-e destinados a
+um CNPJ/CPF, pelo Ambiente Nacional) e a **Manifestação do Destinatário** da NF-e (Ciência da Operação).
 
 O que o pacote de NFe já faz: monta o XML a partir de um objeto JAXB (`TNFe`), calcula a chave de
 acesso, assina digitalmente (XML-DSig), valida contra a XSD oficial da SEFAZ, transmite via SOAP
 sobre TLS mútuo (certificado A1) e, se o lote ficar "em processamento", faz o polling de
 `NFeRetAutorizacao4` até obter o protocolo. Além da emissão, também cobre o ciclo de vida
 pós-emissão: consulta de situação, cancelamento, Carta de Correção (CC-e) e inutilização de faixa
-de numeração.
+de numeração. Do lado do destinatário, envia a Manifestação "Ciência da Operação" (evento `210210`).
 
 O pacote de CTe cobre a emissão — monta o XML a partir de um `TCTe` (JAXB), calcula a chave de
 acesso, assina, valida contra a XSD oficial e transmite via `CTeRecepcaoSinc`, um serviço
@@ -24,13 +26,14 @@ descontinuou para o CTe 4.00 (não há chave `CTeInutilizacao_4.00` em nenhuma U
 de referência, e a própria ACBr recusa a chamada para essa versão).
 
 O pacote de MDFe (Manifesto Eletrônico de Documentos Fiscais, `net.accellog.sefaz4j.mdfe`) é o
-quarto documento coberto pela lib e arquiteturalmente mais próximo do NFe do que do CTe: monta o
-XML a partir de um `TMDFe` (JAXB), calcula a chave de acesso, assina, valida contra a XSD oficial e
-transmite via `MDFeRecepcao` — um serviço de **lote**, igual ao NFe (não síncrono como o
-`CTeRecepcaoSinc`) — fazendo o polling de `MDFeRetRecepcao` quando o lote fica "em processamento".
-Cobre também o ciclo de vida pós-emissão: consulta de situação, cancelamento (evento `110111`),
-encerramento (evento `110112`) e inclusão de condutor (evento `110114`, o único dos três que não
-exige o número de protocolo).
+quarto documento coberto pela lib: monta o XML a partir de um `TMDFe` (JAXB), calcula a chave de
+acesso, assina, valida contra a XSD oficial e transmite via `MDFeRecepcaoSinc` — um serviço
+**síncrono**, igual ao `CTeRecepcaoSinc` do CTe, com o XML comprimido em gzip+Base64. (O
+`MDFeRecepcao` de lote respondeu HTTP 404 na SVRS em testes reais e parece descontinuado; o polling
+de `MDFeRetRecepcao` só entra como contingência, se a resposta ainda vier `103`.) Cobre também o
+ciclo de vida pós-emissão: consulta de situação, cancelamento (evento `110111`), encerramento
+(evento `110112`), inclusão de condutor (evento `110114`, o único dos quatro que não exige o número
+de protocolo) e inclusão de DF-e (evento `110115`, para MDF-e de carga posterior).
 
 O pacote de NFS-e (Padrão Nacional/SEFIN Nacional) é o mais diferente arquiteturalmente dos quatro: o
 transporte é **REST+JSON, não SOAP**, e não há divisão por UF — um único endpoint nacional (ADN)
@@ -66,7 +69,7 @@ pacote `net.accellog:sefaz4j`.
    <dependency>
        <groupId>net.accellog</groupId>
        <artifactId>sefaz4j</artifactId>
-       <version>1.0.0-alpha-1</version>
+       <version>1.0.0</version>
    </dependency>
    ```
 
@@ -149,6 +152,12 @@ ResultadoEvento segundaCce = Sefaz4jNFe.corrigirCartaDeCorrecao(config, chaveAce
 ResultadoInutilizacao inutilizacao = Sefaz4jNFe.inutilizar(
     config, cUF, ano, cnpj, serie, nNFIni, nNFFin, justificativa
 );
+
+// Manifestação do Destinatário — "Ciência da Operação" (evento 210210), assinada pelo
+// destinatário da NF-e. Vai sempre para o Ambiente Nacional, independente da UF do config.
+ResultadoManifestacao manifestacao = Sefaz4jNFe.manifestarCienciaDaOperacao(config, chaveAcesso, cnpjDestinatario);
+ResultadoEvento eventoCiencia = manifestacao.getResultadoEvento(); // cStat 135 = registrado
+String xmlEnviado = manifestacao.getXmlEnvio();
 ```
 
 `ResultadoConsulta`, `ResultadoEvento` e `ResultadoInutilizacao` seguem o mesmo formato de
@@ -169,7 +178,7 @@ quando o chamador passa um valor malformado.
 | Exceção | Quando ocorre |
 |---|---|
 | `net.accellog.sefaz4j.assinatura.CertificadoException` | PFX/senha inválidos, ou falha na assinatura |
-| `net.accellog.sefaz4j.validacao.ValidacaoXsdException` | XML montado/informado não passa na XSD (`getViolacoes()`) |
+| `net.accellog.sefaz4j.validacao.ValidacaoXsdException` | XML montado/informado não passa na XSD (`getViolacoes()`; o XML reprovado vem em `getXmlInvalido()`) |
 | `net.accellog.sefaz4j.webservice.ComunicacaoException` | falha HTTP/SOAP, resposta da SEFAZ ilegível, ou lote ainda `103` após esgotar o polling — situação ambígua, não é seguro reenviar sem investigar |
 
 Ajuste os parâmetros de polling e timeout com os setters fluentes de `Sefaz4jConfig`:
@@ -269,9 +278,10 @@ para cancelamento/CC-e), com `getCStat()`/`getXMotivo()` sempre preenchidos. Nã
 
 O MDFe (Manifesto Eletrônico de Documentos Fiscais) é o quarto documento coberto pela lib
 (`net.accellog.sefaz4j.mdfe`), com emissão e ciclo de vida pós-emissão (consulta/cancelamento/
-encerramento/inclusão de condutor). Arquiteturalmente é mais parecido com o NFe do que com o CTe: a
-recepção do MDFe 3.00 é um serviço de **lote**, então `emitir` faz o polling de `MDFeRetRecepcao`
-quando o lote fica "em processamento" — igual ao NFe, diferente do CTe (síncrono).
+encerramento/inclusão de condutor/inclusão de DF-e). A emissão usa o `MDFeRecepcaoSinc`
+(**síncrono**, como o CTe): a própria resposta já traz o `cStat`/`protMDFe`. Se, excepcionalmente, a
+resposta vier `103` ("em processamento"), `emitir` faz o polling de `MDFeRetRecepcao` como
+contingência, com os mesmos parâmetros de polling do NFe.
 
 ```java
 import net.accellog.sefaz4j.mdfe.ResultadoEmissao;
@@ -314,19 +324,22 @@ lib não gera nem valida esse trecho, quem monta o `TMDFe` constrói o XML do mo
 conta própria e injeta ali antes de chamar `emitir`.
 
 As mesmas 3 exceções técnicas do NFe (`CertificadoException`/`ValidacaoXsdException`/
-`ComunicacaoException`) valem para o MDFe, incluindo o caso de lote "ainda em processamento" após
-esgotar o polling (mesmo risco de reenvio às cegas do NFe).
+`ComunicacaoException`) valem para o MDFe, incluindo o caso de "ainda em processamento" após
+esgotar o polling de contingência (mesmo risco de reenvio às cegas do NFe).
 
 ### Ciclo de vida pós-emissão (MDFe)
 
-Assim como no NFe/CTe, `Sefaz4jMDFe` também cobre consulta e três eventos — sem JAXB, XML montado
+Assim como no NFe/CTe, `Sefaz4jMDFe` também cobre consulta e quatro eventos — sem JAXB, XML montado
 por concatenação de string e sempre validado contra a XSD oficial antes de transmitir. Não existe
-Carta de Correção para o MDFe; os três eventos são cancelamento, encerramento (evento específico do
-MDFe, para registrar onde a viagem realmente terminou) e inclusão de condutor:
+Carta de Correção para o MDFe; os quatro eventos são cancelamento, encerramento (evento específico do
+MDFe, para registrar onde a viagem realmente terminou), inclusão de condutor e inclusão de DF-e:
 
 ```java
+import net.accellog.sefaz4j.mdfe.InfDocInclusao;
 import net.accellog.sefaz4j.mdfe.ResultadoConsulta;
 import net.accellog.sefaz4j.mdfe.ResultadoEvento;
+
+import java.util.List;
 
 // Consultar a situação de um MDF-e já transmitido.
 ResultadoConsulta consulta = Sefaz4jMDFe.consultarSituacao(config, chaveAcesso);
@@ -345,11 +358,25 @@ ResultadoEvento encerramento = Sefaz4jMDFe.encerrar(
 ResultadoEvento condutor = Sefaz4jMDFe.incluirCondutor(config, chaveAcesso, "Nome do Condutor", cpfCondutor);
 // Um segundo condutor no mesmo MDF-e precisa do nSeqEvento explícito (padrão 1 na chamada acima).
 ResultadoEvento segundoCondutor = Sefaz4jMDFe.incluirCondutor(config, chaveAcesso, "Outro Condutor", outroCpf, 2);
+
+// Incluir NF-es num MDF-e emitido com carga posterior (ide/indCarregaPosterior = 1): informa o
+// município de carregamento e, para cada NF-e, o município de descarga. Só aceita chaves de NF-e —
+// o evento 110115 não tem campo para CT-e.
+List<InfDocInclusao> documentos = List.of(
+    new InfDocInclusao(cMunDescarga, "Nome do Município de Descarga", chaveNFe)
+);
+ResultadoEvento inclusaoDFe = Sefaz4jMDFe.incluirDFe(
+    config, chaveAcesso, nProtAutorizacao, cMunCarrega, "Nome do Município de Carga", documentos
+);
+// Uma segunda inclusão no mesmo MDF-e precisa do nSeqEvento explícito.
+ResultadoEvento segundaInclusao = Sefaz4jMDFe.incluirDFe(
+    config, chaveAcesso, nProtAutorizacao, cMunCarrega, "Nome do Município de Carga", outrosDocumentos, 2
+);
 ```
 
 `ResultadoConsulta` e `ResultadoEvento` do MDFe seguem o mesmo formato do `ResultadoEmissao`:
 `isOk()` é estrito para o `cStat` de sucesso específico da operação (`100` para consulta, `135`
-para qualquer um dos três eventos), com `getCStat()`/`getXMotivo()` sempre preenchidos.
+para qualquer um dos quatro eventos), com `getCStat()`/`getXMotivo()` sempre preenchidos.
 
 ## NFS-e
 
@@ -435,36 +462,83 @@ ResultadoEvento substituicao = Sefaz4jNFSe.cancelarPorSubstituicao(config, chave
 não tem esse conceito) nem eventos de confirmação/rejeição do tomador/intermediário (fora de escopo
 desta lib por enquanto).
 
+## Distribuição de DFe (NF-e e CT-e)
+
+`net.accellog.sefaz4j.distdfe` baixa do Ambiente Nacional os documentos (NF-e/CT-e, resumos e
+eventos) destinados a um CNPJ/CPF. A mesma fachada `Sefaz4jDistDfe` atende NF-e e CT-e; o tipo é
+escolhido pelo enum `TipoDocumentoDistDfe` (`NFE`/`CTE`). O `Sefaz4jConfig` deste pacote **não
+recebe UF**: o endpoint é sempre o nacional.
+
+```java
+import net.accellog.sefaz4j.distdfe.DocumentoDistDfe;
+import net.accellog.sefaz4j.distdfe.ResultadoDistribuicaoDFe;
+import net.accellog.sefaz4j.distdfe.Sefaz4jConfig;
+import net.accellog.sefaz4j.distdfe.Sefaz4jDistDfe;
+import net.accellog.sefaz4j.distdfe.TipoDocumentoDistDfe;
+import net.accellog.sefaz4j.endpoints.Ambiente;
+
+Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, pfxBytes, "senha-do-pfx");
+
+// Busca incremental a partir do último NSU já processado ("0" na primeira vez).
+// cUFAutor é opcional para NF-e (null) e obrigatório para CT-e.
+ResultadoDistribuicaoDFe resultado = Sefaz4jDistDfe.distribuicaoPorUltNSU(
+    TipoDocumentoDistDfe.NFE, config, null, cnpjInteressado, ultNSU
+);
+
+for (DocumentoDistDfe doc : resultado.getDocumentos()) {
+    // doc.getXml() já vem descompactado (docZip); doc.getSchema() diz o tipo (resumo, NF-e completa, evento...)
+    processar(doc.getNsu(), doc.getSchema(), doc.getXml());
+}
+
+String proximoUltNSU = resultado.getUltNSU(); // persistir para a próxima chamada
+if (resultado.temMaisDocumentos()) {          // cStat 138: repetir a chamada com o novo ultNSU
+} else if (resultado.nadaMaisADistribuir()) { // cStat 137: aguardar antes de consultar de novo
+} else if (resultado.consumoIndevido()) {     // cStat 656: a SEFAZ bloqueou por excesso de consultas
+}
+
+// Também é possível buscar um NSU específico ou um documento pela chave de acesso:
+Sefaz4jDistDfe.distribuicaoPorNSU(TipoDocumentoDistDfe.CTE, config, cUFAutor, cnpjInteressado, nsu);
+Sefaz4jDistDfe.distribuicaoPorChave(TipoDocumentoDistDfe.NFE, config, null, cnpjInteressado, chaveAcesso);
+```
+
+`getXmlEnvio()`/`getXmlRetorno()` trazem o XML bruto da requisição/resposta, para auditoria/log. As
+mesmas exceções técnicas (`ValidacaoXsdException`/`ComunicacaoException`) valem aqui. Não há
+assinatura XML: o pedido `distDFeInt` não é assinado, e a autenticação é só o TLS mútuo com o
+certificado A1.
+
 ## Como testar
 
 ```bash
 mvn test                                  # suíte padrão (JUnit 4) — não acessa a rede
 mvn test -Dtest=NomeDaClasse#metodo       # um teste específico
-mvn test -Pintegration-tests              # também roda o teste de integração com a Homologação real
+mvn test -Pintegration-tests              # também roda os testes de integração com a Homologação real
 ```
 
 O `mvn test` sozinho nunca sai para a rede: `HomologacaoIntegrationTest` (NFe, em
-`src/test/java/.../nfe/integration/`) e `HomologacaoIntegrationTestCTe` (CTe, em
-`src/test/java/.../cte/integration/`) são excluídos por padrão pela configuração do
+`src/test/java/.../nfe/integration/`), `HomologacaoIntegrationTestCTe` (CTe, em
+`src/test/java/.../cte/integration/`) e `Sefaz4jDistDfeIntegrationTest` (Distribuição de DFe, em
+`src/test/java/.../distdfe/integration/`) são excluídos por padrão pela configuração do
 `maven-surefire-plugin` e só são incluídos com o profile `integration-tests`. Mesmo assim, eles se
 autoexcluem (`org.junit.Assume`) a menos que as variáveis de ambiente `SEFAZ4J_TEST_PFX_PATH` e
-`SEFAZ4J_TEST_PFX_SENHA` apontem para um certificado A1 real (o mesmo certificado serve para os
-dois documentos) — ou seja, eles só chegam a acessar a SEFAZ de Homologação de verdade se você
-fornecer essas duas variáveis:
+`SEFAZ4J_TEST_PFX_SENHA` apontem para um certificado A1 real (o mesmo certificado serve para
+todos). O teste de Distribuição de DFe exige também `SEFAZ4J_TEST_CNPJ`, o CNPJ titular do
+certificado:
 
 ```bash
 export SEFAZ4J_TEST_PFX_PATH=/caminho/para/certificado-homologacao.pfx
 export SEFAZ4J_TEST_PFX_SENHA=senha-do-certificado
+export SEFAZ4J_TEST_CNPJ=12345678000199   # só para o teste de Distribuição de DFe
 mvn test -Pintegration-tests
 ```
 
-## Estrutura de pacotes (NFe, CTe, NFSe e MDFe)
+## Estrutura de pacotes
 
 Um consumidor de NFe precisa do pacote raiz `net.accellog.sefaz4j.nfe` (a fachada `Sefaz4jNFe` e os
 tipos de config/resultado); um consumidor de CTe, do `net.accellog.sefaz4j.cte` (fachada
 `Sefaz4jCTe`, com emissão e ciclo de vida pós-emissão); um consumidor de NFS-e, do
 `net.accellog.sefaz4j.nfse` (fachada `Sefaz4jNFSe`); um consumidor de MDFe, do
-`net.accellog.sefaz4j.mdfe` (fachada `Sefaz4jMDFe`). Os demais pacotes são implementação interna, e
+`net.accellog.sefaz4j.mdfe` (fachada `Sefaz4jMDFe`); para baixar documentos destinados, o
+`net.accellog.sefaz4j.distdfe` (fachada `Sefaz4jDistDfe`). Os demais pacotes são implementação interna, e
 as peças de infraestrutura genéricas (`chave`, `assinatura`, `validacao`, `webservice`, `endpoints`)
 ficam na raiz e são compartilhadas pelos quatro documentos (NFS-e é a exceção parcial — reusa só o
 `Ambiente` de `endpoints`, sem `UF` nem arquivo `.ini`, e tem seu próprio pacote `nfse.chave`):
@@ -474,19 +548,27 @@ ficam na raiz e são compartilhadas pelos quatro documentos (NFS-e é a exceçã
 - `assinatura` — assinatura XML-DSig (Apache Santuario) e carregamento do certificado A1
 - `validacao` — validação contra a XSD oficial (`nfe_v4.00.xsd`, `cte_v4.00.xsd`, `DPS_v1.01.xsd` ou
   `mdfe_v3.00.xsd`, conforme o documento)
-- `webservice` — cliente HTTP com TLS mútuo e parsing da resposta, compartilhados; a montagem do
-  envelope SOAP e o polling de lote (NFe e MDFe — o CTe é síncrono) ficam em
+- `webservice` — cliente HTTP com TLS mútuo e parsing da resposta, compartilhados (inclui a
+  compressão gzip+Base64 da recepção síncrona de CTe/MDFe e a complementação automática da cadeia
+  de certificados, via AIA, quando o PFX traz só o certificado final); a montagem do envelope SOAP
+  e o polling (NFe; no MDFe só como contingência) ficam em
   `nfe.webservice`/`cte.webservice`/`mdfe.webservice`
 - `endpoints` — resolução de URL por UF/Ambiente/Serviço (`nfe-servicos.ini`/`cte-servicos.ini`/
-  `mdfe-servicos.ini`)
+  `mdfe-servicos.ini`); a pseudo-UF `UF.AN` representa o Ambiente Nacional (manifestação e
+  Distribuição de DFe)
+- `distdfe` — Distribuição de DFe (NF-e/CT-e): montagem do `distDFeInt` e parsing/descompactação do
+  `retDistDFeInt`
 - `model` — classes **geradas** por JAXB a partir das XSDs (não editar à mão)
 
 ## Roadmap
 
 - [x] NFe — envio/autorização (4.00)
 - [x] NFe — ciclo de vida pós-emissão (consulta/cancelamento/CC-e/inutilização)
+- [x] NFe — Manifestação do Destinatário: Ciência da Operação (`210210`)
 - [x] CTe — emissão (4.00)
 - [x] CTe — ciclo de vida pós-emissão (consulta/cancelamento/CC-e — inutilização descontinuada pela SEFAZ)
-- [x] MDFe — emissão (3.00)
-- [x] MDFe — ciclo de vida pós-emissão (consulta/cancelamento/encerramento/inclusão de condutor)
+- [x] MDFe — emissão (3.00, recepção síncrona)
+- [x] MDFe — ciclo de vida pós-emissão (consulta/cancelamento/encerramento/inclusão de condutor/inclusão de DF-e)
 - [x] NFSe — emissão, consulta, cancelamento e cancelamento por substituição (Padrão Nacional)
+- [x] Distribuição de DFe — NF-e e CT-e (por último NSU, por NSU e por chave)
+- [ ] NFSe — eventos de confirmação/rejeição do tomador/intermediário
