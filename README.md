@@ -69,7 +69,7 @@ pacote `net.accellog:sefaz4j`.
    <dependency>
        <groupId>net.accellog</groupId>
        <artifactId>sefaz4j</artifactId>
-       <version>1.0.0</version>
+       <version>1.0.1</version>
    </dependency>
    ```
 
@@ -506,6 +506,37 @@ mesmas exceções técnicas (`ValidacaoXsdException`/`ComunicacaoException`) val
 assinatura XML: o pedido `distDFeInt` não é assinado, e a autenticação é só o TLS mútuo com o
 certificado A1.
 
+## Contingência (NF-e, CT-e e MDF-e)
+
+A lib segue a mesma regra do ACBr: a forma de emissão (`tpEmis`) decide para onde cada serviço vai.
+
+| Documento | `tpEmis` | Para onde vai |
+|---|---|---|
+| NF-e | 6 (SVC-AN) / 7 (SVC-RS) | autorização, consulta, cancelamento e CC-e na SEFAZ Virtual de Contingência |
+| CT-e | 7 (SVC-RS) / 8 (SVC-SP) | emissão, consulta, cancelamento e CC-e na SEFAZ Virtual de Contingência |
+| NF-e 2/4/5, CT-e 4/5, MDF-e 2 | contingência offline | autorizador normal da UF (transmissão posterior) |
+
+Na **emissão**, o `tpEmis` vem do próprio XML (`ide/tpEmis`) — não é preciso configurar nada. Para
+**consultar, cancelar ou fazer CC-e** de um documento autorizado em SVC, informe a forma de emissão dele
+no config, senão a chamada vai para a UF:
+
+```java
+Sefaz4jConfig config = new Sefaz4jConfig(UF.PR, Ambiente.HOMOLOGACAO, pfxBytes, "senha-do-pfx")
+        .setTpEmis("7"); // NF-e autorizada no SVC-RS
+ResultadoEvento cancelamento = Sefaz4jNFe.cancelar(config, chave, nProt, justificativa);
+```
+
+`setTpEmis` existe no `Sefaz4jConfig` da NF-e e do CT-e. Inutilização e eventos do Ambiente Nacional
+(manifestação) ignoram esse campo. Os overrides de URL (`setUrl...Override`) continuam tendo prioridade.
+
+Nas contingências **offline** (MDF-e `tpEmis=2`, CT-e `4` EPEC e `5` FS-DA), o QR Code precisa do
+parâmetro `&sign=`: a chave de acesso assinada com o certificado do emitente (SHA1withRSA, Base64).
+O `emitir` acrescenta esse parâmetro sozinho à URL que vier em `qrCodMDFe`/`qrCodCTe`, se ela ainda não
+tiver. O cálculo também está disponível em `AssinaturaQrCode.assinarChave(pfxBytes, senha, chave)`.
+
+A lib não monta `dhCont`/`xJust` (são dados do documento, preenchidos por quem chama) e não
+implementa o evento EPEC (registro prévio da contingência EPEC no Ambiente Nacional/SVC).
+
 ## Como testar
 
 ```bash
@@ -545,7 +576,8 @@ ficam na raiz e são compartilhadas pelos quatro documentos (NFS-e é a exceçã
 
 - `chave` — cálculo da chave de acesso de 44 dígitos (mod-11)
 - `nfe.xml` / `cte.xml` / `mdfe.xml` — montagem do DOM a partir do `TNFe`/`TCTe`/`TMDFe`
-- `assinatura` — assinatura XML-DSig (Apache Santuario) e carregamento do certificado A1
+- `assinatura` — assinatura XML-DSig (Apache Santuario), carregamento do certificado A1 e o `sign` do
+  QR Code de contingência offline (`AssinaturaQrCode`)
 - `validacao` — validação contra a XSD oficial (`nfe_v4.00.xsd`, `cte_v4.00.xsd`, `DPS_v1.01.xsd` ou
   `mdfe_v3.00.xsd`, conforme o documento)
 - `webservice` — cliente HTTP com TLS mútuo e parsing da resposta, compartilhados (inclui a
@@ -555,7 +587,7 @@ ficam na raiz e são compartilhadas pelos quatro documentos (NFS-e é a exceçã
   `nfe.webservice`/`cte.webservice`/`mdfe.webservice`
 - `endpoints` — resolução de URL por UF/Ambiente/Serviço (`nfe-servicos.ini`/`cte-servicos.ini`/
   `mdfe-servicos.ini`); a pseudo-UF `UF.AN` representa o Ambiente Nacional (manifestação e
-  Distribuição de DFe)
+  Distribuição de DFe), e as seções `SVC-*` dos `.ini` atendem a contingência (ver "Contingência")
 - `distdfe` — Distribuição de DFe (NF-e/CT-e): montagem do `distDFeInt` e parsing/descompactação do
   `retDistDFeInt`
 - `model` — classes **geradas** por JAXB a partir das XSDs (não editar à mão)
@@ -571,4 +603,6 @@ ficam na raiz e são compartilhadas pelos quatro documentos (NFS-e é a exceçã
 - [x] MDFe — ciclo de vida pós-emissão (consulta/cancelamento/encerramento/inclusão de condutor/inclusão de DF-e)
 - [x] NFSe — emissão, consulta, cancelamento e cancelamento por substituição (Padrão Nacional)
 - [x] Distribuição de DFe — NF-e e CT-e (por último NSU, por NSU e por chave)
+- [x] Contingência — SVC na NF-e (SVC-AN/SVC-RS) e no CT-e (SVC-RS/SVC-SP), `sign` do QR Code offline (CT-e/MDF-e)
+- [ ] Contingência — evento EPEC (NF-e e CT-e)
 - [ ] NFSe — eventos de confirmação/rejeição do tomador/intermediário
