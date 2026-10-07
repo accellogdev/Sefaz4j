@@ -426,12 +426,25 @@ public final class Sefaz4jNFe {
         return new ResultadoEvento("135".equals(cStatFinal), cStatFinal, xMotivoFinal, nProtFinal, protocoloXml);
     }
 
+    // tpEmis 6 (SVC-AN) e 7 (SVC-RS) não vão para o autorizador da UF: a SEFAZ Virtual de
+    // Contingência tem endpoints próprios, e o autorizador normal rejeita a nota. O ACBr fazia esse
+    // desvio sozinho a partir da FormaEmissao; aqui o tpEmis vem do próprio XML a enviar.
+    static String resolverUrlAutorizador(Sefaz4jConfig config, String tpEmis, Servico servico) {
+        String secaoBase = switch (tpEmis == null ? "" : tpEmis) {
+            case "6" -> "NFe_SVC-AN";
+            case "7" -> "NFe_SVC-RS";
+            default -> PREFIXO_SECAO_NFE + config.getUf().name();
+        };
+        return EndpointResolver.resolverSecao(NFE_SERVICOS_INI, secaoBase, config.getAmbiente(), servico.getChaveIni());
+    }
+
     private static ResultadoEmissao enviarEProcessar(Sefaz4jConfig config, String xmlAssinado) {
         ValidadorXsd.validar(xmlAssinado);
 
+        String tpEmis = extrairTextoDoElemento(xmlAssinado, "tpEmis");
         String urlAutorizacao = config.getUrlAutorizacaoOverride() != null
             ? config.getUrlAutorizacaoOverride()
-            : EndpointResolver.resolver(NFE_SERVICOS_INI, PREFIXO_SECAO_NFE, config.getUf(), config.getAmbiente(), Servico.NFE_AUTORIZACAO.getChaveIni());
+            : resolverUrlAutorizador(config, tpEmis, Servico.NFE_AUTORIZACAO);
 
         String envelope = SoapEnvelopeBuilder.envelopeAutorizacao(xmlAssinado, 1L);
         String respostaBruta = SefazHttpClient.postar(
@@ -448,7 +461,7 @@ public final class Sefaz4jNFe {
         if ("103".equals(resposta.getCStat())) {
             String urlRetAutorizacao = config.getUrlRetAutorizacaoOverride() != null
                 ? config.getUrlRetAutorizacaoOverride()
-                : EndpointResolver.resolver(NFE_SERVICOS_INI, PREFIXO_SECAO_NFE, config.getUf(), config.getAmbiente(), Servico.NFE_RET_AUTORIZACAO.getChaveIni());
+                : resolverUrlAutorizador(config, tpEmis, Servico.NFE_RET_AUTORIZACAO);
             resposta = ReciboPoller.aguardarProtocolo(
                 resposta.getNRec(),
                 config.getAmbiente().getTpAmb(),

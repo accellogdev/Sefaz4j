@@ -37,6 +37,12 @@ public class EndpointResolverTest {
     }
 
     @Test
+    public void resolveSecaoPorNome_SVCRS_Homologacao_Autorizacao() {
+        String url = EndpointResolver.resolverSecao(NFE_INI, "NFE_SVC-RS", Ambiente.HOMOLOGACAO, Servico.NFE_AUTORIZACAO.getChaveIni());
+        assertEquals("https://nfe-homologacao.svrs.rs.gov.br/ws/NfeAutorizacao/NFeAutorizacao4.asmx", url);
+    }
+
+    @Test
     public void todasAs27UFsResolvemOsDoisServicosNosDoisAmbientes() {
         for (UF uf : UF.values()) {
             // UF.AN é um marcador de Ambiente Nacional (usado só pela Distribuição de DFe),

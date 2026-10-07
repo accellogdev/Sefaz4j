@@ -18,9 +18,15 @@ public final class EndpointResolver {
     }
 
     public static String resolver(String caminhoIni, String prefixoSecao, UF uf, Ambiente ambiente, String chaveServico) {
+        return resolverSecao(caminhoIni, prefixoSecao + uf.name(), ambiente, chaveServico);
+    }
+
+    // Para seções que não são de uma UF, como as da SEFAZ Virtual de Contingência
+    // ([NFe_SVC-AN_*]/[NFe_SVC-RS_*]): secaoBase é o nome da seção sem o sufixo de ambiente.
+    public static String resolverSecao(String caminhoIni, String secaoBase, Ambiente ambiente, String chaveServico) {
         Map<String, Map<String, String>> secoes = INI_CACHE.computeIfAbsent(caminhoIni, EndpointResolver::carregar);
 
-        String secaoNome = prefixoSecao + uf.name() + "_" + ambiente.getSufixo();
+        String secaoNome = (secaoBase + "_" + ambiente.getSufixo()).toUpperCase();
         Map<String, String> secao = secoes.get(secaoNome);
         if (secao == null) {
             throw new IllegalStateException("Seção não encontrada em " + caminhoIni + ": " + secaoNome);
