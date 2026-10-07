@@ -65,6 +65,7 @@ documented in their own sections below):
 - **`Sefaz4jConfig`** — UF, `Ambiente`, PFX bytes + password, optional URL overrides
   (`urlAutorizacaoOverride` via constructor, `setUrlRetAutorizacaoOverride` fluently — mainly for tests/proxies),
   and fluent setters for `timeout`/`maxTentativasPolling`/`intervaloPolling` (defaults: 30s, 5, 5s).
+  Fluent `setTpEmis` routes consulta/cancelamento/CC-e of a note authorized in SVC — see "Contingency".
 - **`ResultadoEmissao`** — `isOk()` is `true` **only** when SEFAZ's returned `cStat` is `100`; `getXmlAutorizado()`
   is a single well-formed XML document (wrapped in `<nfeProc>` when a protocol/`protNFe` is present).
 - **`ResultadoConsulta`/`ResultadoEvento`/`ResultadoInutilizacao`** — mesmo formato de `ResultadoEmissao`
@@ -123,7 +124,8 @@ exception for any v4.00 inutilização call, and no `CTeInutilizacao_4.00` key e
 - **`net.accellog.sefaz4j.cte.Sefaz4jConfig`** — `UF`, `Ambiente`, PFX bytes + password, optional
   `urlAutorizacaoOverride` (constructor arg, or fluent `setUrlAutorizacaoOverride`), fluent
   `setUrlConsultaProtocoloOverride`/`setUrlRecepcaoEventoOverride` for the fase-2 endpoints, and a
-  fluent `setTimeout` (default 30s). No polling-related setters — there is nothing to poll.
+  fluent `setTimeout` (default 30s). No polling-related setters — there is nothing to poll. Fluent
+  `setTpEmis` works like the NFe one (7/8 → SVC-RS/SVC-SP) — see "Contingency".
 - **`net.accellog.sefaz4j.cte.ResultadoEmissao`** — same shape as the NFe one: `isOk()` is `true` only
   when `cStat` is `100`; `getCStat()`/`getXMotivo()` always populated; `getChCTe()` (chave de acesso);
   `getXmlAutorizado()` is a single well-formed XML document, wrapped in `<cteProc>` when a `protCTe` is
@@ -381,6 +383,29 @@ ini file/section prefix/service key, and whether `cUFAutor` is required.
   examples is a byte-for-byte duplicate of the NFe one and is misleading. With `nfe`, SEFAZ rejected
   every call with `cStat 215`. See the comment on `TipoDocumentoDistDfe.CTE`.
 
+## Contingency (NFe/CTe/MDFe)
+
+Same rule as ACBr's `FormaEmissao` (`ACBrNFe.LerServicoDeParams`, `TACBrCTe.GetUFFormaEmissao`,
+`ACBrNFeWebServices`/`ACBrCTeWebServices` `DefinirURL`):
+
+- **SVC routing.** NFe `tpEmis` 6/7 → sections `NFe_SVC-AN_*`/`NFe_SVC-RS_*` of `nfe-servicos.ini`; CTe
+  7/8 → `CTE_SVC-RS_*`/`CTE_SVC-SP_*` of `cte-servicos.ini` (copied from `ACBrCTeServicos.ini`). Any other
+  value stays on the UF. Emission (`NFeAutorizacao4`/`NFeRetAutorizacao4`, `CTeRecepcaoSinc`) reads
+  `tpEmis` from the signed XML itself; consulta and the autorizador's events (cancelamento, CC-e) have no
+  document to read it from, so they use `Sefaz4jConfig.setTpEmis` — a caller that doesn't set it sends
+  them to the UF. NFe inutilização and Ambiente Nacional events (manifestação) never follow SVC — ACBr
+  doesn't route them either. Resolution lives in package-private `resolverUrlAutorizador`/
+  `urlConsultaProtocolo`/`urlRecepcaoEvento*` (covered by `*RoteamentoContingenciaTest`); explicit
+  `setUrl...Override`s still win. MDFe has no SVC (its `tpEmis` is only 1/2/3).
+- **QR Code `&sign=` in offline contingency** (MDFe `tpEmis=2`, CTe 4 EPEC / 5 FS-DA): the access key
+  signed SHA1withRSA with the emitter's certificate, Base64, appended to the caller-built `qrCodMDFe`/
+  `qrCodCTe` URL. `emitir` does it on the DOM (after the builder injects the `Id`, before signing; the
+  `infMDFeSupl`/`infCTeSupl` is outside the signed element anyway) only if the URL has no `&sign=` yet.
+  The algorithm was verified against a production-authorized MDF-e, using the certificate from that XML's
+  own `<Signature>`. SVC needs no `sign` — authorized SVC CT-e use the plain emitter-UF URL.
+- **Not in the library**: `dhCont`/`xJust` (document data, filled by the caller), and the EPEC event
+  (NFe 110140 / CTe EPEC) that registers EPEC contingency before the document is sent.
+
 ## Package layout
 
 - `net.accellog.sefaz4j.nfe` / `net.accellog.sefaz4j.cte` / `net.accellog.sefaz4j.nfse` /
@@ -394,7 +419,7 @@ ini file/section prefix/service key, and whether `cUFAutor` is required.
   from the computed chave when absent.
 - `net.accellog.sefaz4j.cte.xml` — `CTeXmlBuilder`: same role for `TCTe`, injecting `infCte/@Id` and `ide/cDV`.
 - `net.accellog.sefaz4j.assinatura` (shared) — `AssinadorXml` (Apache Santuario XML signature), `CertificadoA1` (PKCS12 loading),
-  `CertificadoException`.
+  `CertificadoException`, and `AssinaturaQrCode` (the offline-contingency QR Code `&sign=` — see "Contingency").
 - `net.accellog.sefaz4j.validacao` (shared) — `ValidadorXsd`: validates a serialized XML string against the bundled `nfe_v4.00.xsd`/
   `cte_v4.00.xsd`/`DPS_v1.01.xsd`/`evento_v1.01.xsd`/`pedRegEvento_v1.01.xsd`/`mdfe_v3.00.xsd`/
   `consSitMDFe_v3.00.xsd`/`evCancMDFe_v3.00.xsd`/`evEncMDFe_v3.00.xsd`/`evIncCondutorMDFe_v3.00.xsd`/
@@ -415,7 +440,8 @@ ini file/section prefix/service key, and whether `cUFAutor` is required.
   (no `ReciboPoller` equivalent — see the CTe section above).
 - `net.accellog.sefaz4j.endpoints` (shared) — `EndpointResolver` + `UF`/`Ambiente`, backed by `src/main/resources/endpoints/nfe-servicos.ini`
   (NFe), `cte-servicos.ini` (CTe), and `mdfe-servicos.ini` (MDFe), selected via a path/section-prefix
-  argument to `EndpointResolver.resolver(...)`. `UF` includes a pseudo-UF `AN` (Ambiente Nacional),
+  argument to `EndpointResolver.resolver(...)`; `resolverSecao(...)` takes a section name directly, for
+  sections that aren't a UF (the `SVC-*` contingency ones). `UF` includes a pseudo-UF `AN` (Ambiente Nacional),
   used for NFe manifestação and Distribuição de DFe. Tests that iterate "all 27 UFs" must exclude it. NFS-e reuses only the `Ambiente` enum from here (no
   `UF`, no ini file): its single national URLs are hardcoded constants in `Sefaz4jNFSe`
   (`URL_PRODUCAO`/`URL_HOMOLOGACAO`), never routed through `EndpointResolver`.
@@ -564,5 +590,5 @@ ini file/section prefix/service key, and whether `cUFAutor` is required.
   GitHub PAT with `read:packages` even for this public repo (see README for the `settings.xml` snippet) —
   GitHub Packages has no anonymous download for Maven.
 - Pre-releases used a Maven-native qualifier scheme (`1.0.0-alpha-1`, `-alpha-2`, ...) so they sort
-  before `1.0.0` per Maven's version comparator; `pom.xml` is now at `1.0.0`. Keep the README's
+  before `1.0.0` per Maven's version comparator; `pom.xml` is now at `1.0.1`. Keep the README's
   dependency snippet (`<version>`) in sync when bumping.

@@ -1,6 +1,7 @@
 package net.accellog.sefaz4j.mdfe;
 
 import net.accellog.sefaz4j.assinatura.AssinadorXml;
+import net.accellog.sefaz4j.assinatura.AssinaturaQrCode;
 import net.accellog.sefaz4j.endpoints.EndpointResolver;
 import net.accellog.sefaz4j.mdfe.endpoints.Servico;
 import net.accellog.sefaz4j.mdfe.model.TMDFe;
@@ -68,6 +69,14 @@ public final class Sefaz4jMDFe {
         verificarTpAmbCompativel(config, mdfe);
 
         Document documento = montarDocumento(mdfe);
+
+        // Contingência (tpEmis=2) é offline: o QR Code leva também a chave assinada com o
+        // certificado (&sign=), como o ACBr faz (TACBrMDFe.GetURLQRCode) — sem ele não há como o
+        // DAMDFE impresso na contingência ser validado.
+        if ("2".equals(mdfe.getInfMDFe().getIde().getTpEmis())) {
+            AssinaturaQrCode.completarQrCode(documento, MDFE_NAMESPACE, "qrCodMDFe",
+                mdfe.getInfMDFe().getId().substring("MDFe".length()), config.getPfxBytes(), config.getSenhaPfx());
+        }
 
         // prefixoAssinatura="" (em vez do "ds:" default do Apache Santuario): mesma exigência já
         // confirmada empiricamente para CT-e-PR (cStat 598) e NFS-e (E1228) — a suposição antiga

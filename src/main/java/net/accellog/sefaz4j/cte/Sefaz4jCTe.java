@@ -1,6 +1,7 @@
 package net.accellog.sefaz4j.cte;
 
 import net.accellog.sefaz4j.assinatura.AssinadorXml;
+import net.accellog.sefaz4j.assinatura.AssinaturaQrCode;
 import net.accellog.sefaz4j.cte.endpoints.Servico;
 import net.accellog.sefaz4j.cte.model.TCTe;
 import net.accellog.sefaz4j.cte.webservice.SoapEnvelopeBuilder;
@@ -68,6 +69,14 @@ public final class Sefaz4jCTe {
 
         Document documento = montarDocumento(cte);
 
+        // EPEC (4) e FS-DA (5) são contingências offline: o QR Code leva também a chave assinada
+        // com o certificado (&sign=), como o ACBr faz (TACBrCTe.GetURLQRCode).
+        String tpEmis = cte.getInfCte().getIde().getTpEmis();
+        if ("4".equals(tpEmis) || "5".equals(tpEmis)) {
+            AssinaturaQrCode.completarQrCode(documento, CTE_NAMESPACE, "qrCodCTe",
+                cte.getInfCte().getId().substring("CTe".length()), config.getPfxBytes(), config.getSenhaPfx());
+        }
+
         // prefixoAssinatura="" (em vez do "ds:" default do Apache Santuario): confirmado
         // empiricamente contra a SEFAZ-PR (homologação) que a mesma regra da NFS-e/SEFIN
         // Nacional (E1228) também vale aqui -- sem isso, a SEFAZ rejeita com cStat 598 ("Usar
@@ -96,7 +105,7 @@ public final class Sefaz4jCTe {
 
         String url = config.getUrlConsultaProtocoloOverride() != null
             ? config.getUrlConsultaProtocoloOverride()
-            : EndpointResolver.resolver(CTE_SERVICOS_INI, PREFIXO_SECAO_CTE, config.getUf(), config.getAmbiente(), Servico.CTE_CONSULTA_PROTOCOLO.getChaveIni());
+            : urlConsultaProtocolo(config);
 
         String envelope = SoapEnvelopeBuilder.envelopeConsultaSituacao(xmlConsulta);
         String respostaBruta = SefazHttpClient.postar(
@@ -243,12 +252,34 @@ public final class Sefaz4jCTe {
         }
     }
 
+    // Consulta e eventos (cancelamento, CC-e) de um CT-e autorizado em SVC vão para o mesmo SVC
+    // (Sefaz4jConfig.setTpEmis) — como no ACBr, onde a FormaEmissao vale para todos esses serviços.
+    static String urlConsultaProtocolo(Sefaz4jConfig config) {
+        return resolverUrlAutorizador(config, config.getTpEmis(), Servico.CTE_CONSULTA_PROTOCOLO);
+    }
+
+    static String urlRecepcaoEvento(Sefaz4jConfig config) {
+        return resolverUrlAutorizador(config, config.getTpEmis(), Servico.CTE_RECEPCAO_EVENTO);
+    }
+
+    // tpEmis 7 (SVC-RS) e 8 (SVC-SP) não vão para o autorizador da UF: a SEFAZ Virtual de
+    // Contingência tem endpoints próprios. O ACBr fazia esse desvio a partir da FormaEmissao
+    // (TACBrCTe.GetUFFormaEmissao); na emissão o tpEmis vem do próprio XML a enviar.
+    static String resolverUrlAutorizador(Sefaz4jConfig config, String tpEmis, Servico servico) {
+        String secaoBase = switch (tpEmis == null ? "" : tpEmis) {
+            case "7" -> "CTE_SVC-RS";
+            case "8" -> "CTE_SVC-SP";
+            default -> PREFIXO_SECAO_CTE + config.getUf().name();
+        };
+        return EndpointResolver.resolverSecao(CTE_SERVICOS_INI, secaoBase, config.getAmbiente(), servico.getChaveIni());
+    }
+
     private static ResultadoEmissao enviarEProcessar(Sefaz4jConfig config, String xmlAssinado) {
         ValidadorXsd.validar(xmlAssinado, CTE_XSD_RAIZ);
 
         String url = config.getUrlAutorizacaoOverride() != null
             ? config.getUrlAutorizacaoOverride()
-            : EndpointResolver.resolver(CTE_SERVICOS_INI, PREFIXO_SECAO_CTE, config.getUf(), config.getAmbiente(), Servico.CTE_RECEPCAO_SINC.getChaveIni());
+            : resolverUrlAutorizador(config, extrairTextoDoElemento(xmlAssinado, "tpEmis"), Servico.CTE_RECEPCAO_SINC);
 
         // O MOC do CT-e exige que o conteúdo de cteDadosMsg na recepção síncrona venha
         // compactado em gzip e codificado em Base64 (diferente das demais operações, que
@@ -291,7 +322,7 @@ public final class Sefaz4jCTe {
 
         String url = config.getUrlRecepcaoEventoOverride() != null
             ? config.getUrlRecepcaoEventoOverride()
-            : EndpointResolver.resolver(CTE_SERVICOS_INI, PREFIXO_SECAO_CTE, config.getUf(), config.getAmbiente(), Servico.CTE_RECEPCAO_EVENTO.getChaveIni());
+            : urlRecepcaoEvento(config);
 
         String envelope = SoapEnvelopeBuilder.envelopeRecepcaoEvento(xmlEventoAssinado);
         String respostaBruta = SefazHttpClient.postar(

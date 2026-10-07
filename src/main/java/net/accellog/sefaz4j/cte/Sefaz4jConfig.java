@@ -14,6 +14,7 @@ public final class Sefaz4jConfig {
     private String urlConsultaProtocoloOverride;
     private String urlRecepcaoEventoOverride;
     private Duration timeout = Duration.ofSeconds(30);
+    private String tpEmis;
 
     public Sefaz4jConfig(UF uf, Ambiente ambiente, byte[] pfxBytes, String senhaPfx) {
         this(uf, ambiente, pfxBytes, senhaPfx, null);
@@ -76,6 +77,21 @@ public final class Sefaz4jConfig {
 
     public Sefaz4jConfig setTimeout(Duration timeout) {
         this.timeout = timeout;
+        return this;
+    }
+
+    public String getTpEmis() {
+        return tpEmis;
+    }
+
+    /**
+     * Forma de emissão (tpEmis) do CT-e sobre o qual se vai consultar ou registrar evento
+     * (cancelamento, CC-e). Com 7 (SVC-RS) ou 8 (SVC-SP) esses serviços vão para a SEFAZ Virtual de
+     * Contingência, e não para a UF — mesmo critério do ACBr (FormaEmissao). Os demais valores, ou
+     * nenhum, mantêm a UF. A emissão ignora este campo: lá vale o tpEmis do próprio XML.
+     */
+    public Sefaz4jConfig setTpEmis(String tpEmis) {
+        this.tpEmis = tpEmis;
         return this;
     }
 }

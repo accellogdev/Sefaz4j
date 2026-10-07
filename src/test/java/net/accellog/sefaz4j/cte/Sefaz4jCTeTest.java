@@ -218,6 +218,39 @@ public class Sefaz4jCTeTest {
         Sefaz4jCTe.emitir(config, cte);
     }
 
+    // FS-DA (5) e EPEC (4) são offline: o QR Code ganha &sign=; SVC (7/8) não.
+    @Test
+    public void emitirEmContingenciaOffLineAcrescentaSignAoQrCodeESvcNao() {
+        servidor.createContext("/recepcao-sinc-contingencia", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><cteResultMsg xmlns=\"http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoSinc\">" +
+                "<retCTe xmlns=\"http://www.portalfiscal.inf.br/cte\" versao=\"4.00\">" +
+                "<tpAmb>1</tpAmb><verAplic>SP_1.0.0</verAplic>" +
+                "<cStat>999</cStat><xMotivo>Rejeicao qualquer</xMotivo>" +
+                "</retCTe></cteResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+        Sefaz4jConfig config = new Sefaz4jConfig(
+            UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123",
+            "https://localhost:" + servidor.getAddress().getPort() + "/recepcao-sinc-contingencia"
+        );
+        String urlQrCode = "https://nfe.fazenda.sp.gov.br/CTeConsulta/qrCode?chCTe=35250812345678000195575231000001231123456781";
+
+        for (String tpEmis : new String[] {"5", "8"}) {
+            TCTe cte = montarCteMinimoValido();
+            cte.getInfCte().getIde().setTpEmis(tpEmis);
+            TCTe.InfCTeSupl supl = new ObjectFactory().createTCTeInfCTeSupl();
+            supl.setQrCodCTe(urlQrCode + "&tpAmb=1");
+            cte.setInfCTeSupl(supl);
+
+            String xml = Sefaz4jCTe.emitir(config, cte).getXmlAutorizado();
+
+            assertEquals(xml, "5".equals(tpEmis), xml.contains(urlQrCode + "&amp;tpAmb=1&amp;sign="));
+        }
+    }
+
     /**
      * Constrói o mesmo CT-e mínimo de {@link #xmlCteAssinadoValido()}, mas como objeto
      * {@code TCTe} — é a forma que {@code Sefaz4jCTe.emitir} recebe. Deliberadamente sem
