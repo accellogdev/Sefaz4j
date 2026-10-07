@@ -236,6 +236,36 @@ public class Sefaz4jMDFeTest {
         assertTrue(resultado.getXmlAutorizado().startsWith("<mdfeProc") && resultado.getXmlAutorizado().endsWith("</mdfeProc>"));
     }
 
+    // Contingência (tpEmis=2): o QR Code ganha &sign= (chave assinada com o certificado).
+    @Test
+    public void emitirEmContingenciaAcrescentaSignAoQrCode() {
+        servidor.createContext("/recepcao-contingencia", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><mdfeResultMsg xmlns=\"http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeRecepcao\">" +
+                "<retEnviMDFe xmlns=\"http://www.portalfiscal.inf.br/mdfe\" versao=\"3.00\">" +
+                "<tpAmb>1</tpAmb><verAplic>RS_1.0.0</verAplic>" +
+                "<cStat>999</cStat><xMotivo>Rejeicao qualquer</xMotivo>" +
+                "</retEnviMDFe></mdfeResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+        Sefaz4jConfig config = new Sefaz4jConfig(
+            UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123",
+            "https://localhost:" + servidor.getAddress().getPort() + "/recepcao-contingencia"
+        );
+        TMDFe mdfe = montarMdfeMinimoValido();
+        mdfe.getInfMDFe().getIde().setTpEmis("2");
+        TMDFe.InfMDFeSupl supl = new ObjectFactory().createTMDFeInfMDFeSupl();
+        supl.setQrCodMDFe("https://dfe-portal.svrs.rs.gov.br/mdfe/qrCode?chMDFe=35250812345678000195582231000001231123456785&tpAmb=1");
+        mdfe.setInfMDFeSupl(supl);
+
+        ResultadoEmissao resultado = Sefaz4jMDFe.emitir(config, mdfe);
+
+        String xml = resultado.getXmlAutorizado();
+        assertTrue(xml, xml.contains("qrCode?chMDFe=35250812345678000195582231000001231123456785&amp;tpAmb=1&amp;sign="));
+    }
+
     @Test(expected = IllegalArgumentException.class)
     public void emitirRejeitaTpAmbDivergenteDoAmbienteConfigurado() {
         Sefaz4jConfig config = new Sefaz4jConfig(UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123");
