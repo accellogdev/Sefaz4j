@@ -132,7 +132,7 @@ public final class Sefaz4jNFe {
 
         String url = config.getUrlConsultaProtocoloOverride() != null
             ? config.getUrlConsultaProtocoloOverride()
-            : EndpointResolver.resolver(NFE_SERVICOS_INI, PREFIXO_SECAO_NFE, config.getUf(), config.getAmbiente(), Servico.NFE_CONSULTA_PROTOCOLO.getChaveIni());
+            : urlConsultaProtocolo(config);
 
         String envelope = SoapEnvelopeBuilder.envelopeConsultaSituacao(xmlConsulta);
         String respostaBruta = SefazHttpClient.postar(
@@ -190,7 +190,7 @@ public final class Sefaz4jNFe {
         AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1, "");
         String xmlEventoAssinado = serializarDocumento(documento);
 
-        return enviarEProcessarEvento(config, config.getUf(), xmlEventoAssinado, "eventoCancNFe_v1.00.xsd");
+        return enviarEProcessarEvento(config, urlRecepcaoEventoDoAutorizador(config), xmlEventoAssinado, "eventoCancNFe_v1.00.xsd");
     }
 
     private static final String X_COND_USO_CCE =
@@ -224,7 +224,7 @@ public final class Sefaz4jNFe {
         AssinadorXml.assinar(documento, config.getPfxBytes(), config.getSenhaPfx(), NFE_NAMESPACE, "infEvento", XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA1, MessageDigestAlgorithm.ALGO_ID_DIGEST_SHA1, "");
         String xmlEventoAssinado = serializarDocumento(documento);
 
-        return enviarEProcessarEvento(config, config.getUf(), xmlEventoAssinado, "CCe_v1.00.xsd");
+        return enviarEProcessarEvento(config, urlRecepcaoEventoDoAutorizador(config), xmlEventoAssinado, "CCe_v1.00.xsd");
     }
 
     public static ResultadoManifestacao manifestarCienciaDaOperacao(Sefaz4jConfig config, String chaveAcesso, String cnpjDestinatario) {
@@ -237,7 +237,12 @@ public final class Sefaz4jNFe {
         // tpEvento 210200/210210/210220/210240 -- confirmado em
         // C:\Strada_Web\wezi\wezi-sefaz\Schemas\NFe\confRecebto_v1.00.xsd (mesmo padrão raiz-evento
         // usado por CCe_v1.00.xsd para a Carta de Correção).
-        ResultadoEvento resultadoEvento = enviarEProcessarEvento(config, UF.AN, xmlEventoAssinado, "confRecebto_v1.00.xsd");
+        ResultadoEvento resultadoEvento = enviarEProcessarEvento(
+            config,
+            EndpointResolver.resolver(NFE_SERVICOS_INI, PREFIXO_SECAO_NFE, UF.AN, config.getAmbiente(), Servico.RECEPCAO_EVENTO.getChaveIni()),
+            xmlEventoAssinado,
+            "confRecebto_v1.00.xsd"
+        );
         return new ResultadoManifestacao(xmlEventoAssinado, resultadoEvento);
     }
 
@@ -394,12 +399,12 @@ public final class Sefaz4jNFe {
             .replace("'", "&apos;");
     }
 
-    private static ResultadoEvento enviarEProcessarEvento(Sefaz4jConfig config, UF ufAutorizador, String xmlEventoAssinado, String xsdRaiz) {
+    private static ResultadoEvento enviarEProcessarEvento(Sefaz4jConfig config, String urlPadrao, String xmlEventoAssinado, String xsdRaiz) {
         ValidadorXsd.validar(xmlEventoAssinado, "/schemas/nfe/" + xsdRaiz);
 
         String url = config.getUrlRecepcaoEventoOverride() != null
             ? config.getUrlRecepcaoEventoOverride()
-            : EndpointResolver.resolver(NFE_SERVICOS_INI, PREFIXO_SECAO_NFE, ufAutorizador, config.getAmbiente(), Servico.RECEPCAO_EVENTO.getChaveIni());
+            : urlPadrao;
 
         String envelope = SoapEnvelopeBuilder.envelopeRecepcaoEvento(xmlEventoAssinado, 1L);
         String respostaBruta = SefazHttpClient.postar(
@@ -426,9 +431,20 @@ public final class Sefaz4jNFe {
         return new ResultadoEvento("135".equals(cStatFinal), cStatFinal, xMotivoFinal, nProtFinal, protocoloXml);
     }
 
+    // Consulta, cancelamento e CC-e de uma nota autorizada em SVC vão para o mesmo SVC
+    // (Sefaz4jConfig.setTpEmis) — como no ACBr, onde a FormaEmissao vale para todos os serviços
+    // exceto inutilização e eventos do Ambiente Nacional.
+    static String urlConsultaProtocolo(Sefaz4jConfig config) {
+        return resolverUrlAutorizador(config, config.getTpEmis(), Servico.NFE_CONSULTA_PROTOCOLO);
+    }
+
+    static String urlRecepcaoEventoDoAutorizador(Sefaz4jConfig config) {
+        return resolverUrlAutorizador(config, config.getTpEmis(), Servico.RECEPCAO_EVENTO);
+    }
+
     // tpEmis 6 (SVC-AN) e 7 (SVC-RS) não vão para o autorizador da UF: a SEFAZ Virtual de
     // Contingência tem endpoints próprios, e o autorizador normal rejeita a nota. O ACBr fazia esse
-    // desvio sozinho a partir da FormaEmissao; aqui o tpEmis vem do próprio XML a enviar.
+    // desvio sozinho a partir da FormaEmissao; na emissão o tpEmis vem do próprio XML a enviar.
     static String resolverUrlAutorizador(Sefaz4jConfig config, String tpEmis, Servico servico) {
         String secaoBase = switch (tpEmis == null ? "" : tpEmis) {
             case "6" -> "NFe_SVC-AN";

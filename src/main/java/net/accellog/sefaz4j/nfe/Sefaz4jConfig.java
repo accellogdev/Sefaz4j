@@ -18,6 +18,7 @@ public final class Sefaz4jConfig {
     private Duration timeout = Duration.ofSeconds(30);
     private int maxTentativasPolling = 5;
     private Duration intervaloPolling = Duration.ofSeconds(5);
+    private String tpEmis;
 
     public Sefaz4jConfig(UF uf, Ambiente ambiente, byte[] pfxBytes, String senhaPfx) {
         this(uf, ambiente, pfxBytes, senhaPfx, null);
@@ -151,6 +152,21 @@ public final class Sefaz4jConfig {
      */
     public Sefaz4jConfig setIntervaloPolling(Duration intervaloPolling) {
         this.intervaloPolling = intervaloPolling;
+        return this;
+    }
+
+    public String getTpEmis() {
+        return tpEmis;
+    }
+
+    /**
+     * Forma de emissão (tpEmis) da NF-e sobre a qual se vai consultar, cancelar ou corrigir (CC-e).
+     * Com 6 (SVC-AN) ou 7 (SVC-RS) esses serviços vão para a SEFAZ Virtual de Contingência que
+     * autorizou a nota, e não para a UF — mesmo critério do ACBr (FormaEmissao). Os demais valores,
+     * ou nenhum, mantêm a UF. A emissão ignora este campo: lá vale o tpEmis do próprio XML.
+     */
+    public Sefaz4jConfig setTpEmis(String tpEmis) {
+        this.tpEmis = tpEmis;
         return this;
     }
 }
