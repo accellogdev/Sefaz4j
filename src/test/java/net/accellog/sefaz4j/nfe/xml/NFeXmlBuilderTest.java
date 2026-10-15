@@ -52,4 +52,46 @@ public class NFeXmlBuilderTest {
         // padrão de "só preenche se ausente" já usado para Id.
         assertEquals("9", ide.getCDV());
     }
+
+    @Test
+    public void preencheIdEHashDoCsrtNoResponsavelTecnico() {
+        // hashCSRT = Base64(SHA1(CSRT + chave de acesso)) — fórmula do ACBr (CalcularHashCSRT),
+        // conferida contra uma NF-e real autorizada. CSRT e chave aqui são sintéticos.
+        ObjectFactory fabrica = new ObjectFactory();
+        TNFe nfe = fabrica.createTNFe();
+        TNFe.InfNFe infNFe = fabrica.createTNFeInfNFe();
+        TNFe.InfNFe.Ide ide = fabrica.createTNFeInfNFeIde();
+        ide.setCUF("35");
+        ide.setDhEmi("2025-08-12T10:00:00-03:00");
+        ide.setMod("55");
+        ide.setSerie("001");
+        ide.setNNF("000000123");
+        ide.setTpEmis("1");
+        ide.setCNF("12345678");
+        infNFe.setIde(ide);
+        TNFe.InfNFe.Emit emit = fabrica.createTNFeInfNFeEmit();
+        emit.setCNPJ("12345678000195");
+        infNFe.setEmit(emit);
+        infNFe.setInfRespTec(fabrica.createTInfRespTec());
+        nfe.setInfNFe(infNFe);
+
+        NFeXmlBuilder.preencherCsrt(nfe, 2, "CSRTSINTETICODETESTE0000000000000000");
+
+        assertEquals("NFe35250812345678000195550010000001231123456789", infNFe.getId());
+        assertEquals("02", infNFe.getInfRespTec().getIdCSRT());
+        assertEquals("gLFSwOlasn9/q+Yx8ul2o+lO9XE=",
+                java.util.Base64.getEncoder().encodeToString(infNFe.getInfRespTec().getHashCSRT()));
+    }
+
+    @Test
+    public void preencherCsrtSemResponsavelTecnicoNaoFazNada() {
+        ObjectFactory fabrica = new ObjectFactory();
+        TNFe nfe = fabrica.createTNFe();
+        nfe.setInfNFe(fabrica.createTNFeInfNFe());
+
+        NFeXmlBuilder.preencherCsrt(nfe, 2, "CSRTSINTETICODETESTE0000000000000000");
+
+        assertEquals(null, nfe.getInfNFe().getInfRespTec());
+        assertEquals(null, nfe.getInfNFe().getId());
+    }
 }

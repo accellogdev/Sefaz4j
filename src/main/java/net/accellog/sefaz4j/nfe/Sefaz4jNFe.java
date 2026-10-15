@@ -65,6 +65,11 @@ public final class Sefaz4jNFe {
         // obrigatórios ausentes), que continuam se propagando intactas.
         verificarTpAmbCompativel(config, nfe);
 
+        // idCSRT/hashCSRT dependem da chave de acesso, que só existe a partir daqui.
+        if (config.getCsrt() != null && !config.getCsrt().isBlank() && config.getIdCsrt() != null) {
+            NFeXmlBuilder.preencherCsrt(nfe, config.getIdCsrt(), config.getCsrt());
+        }
+
         Document documento = montarDocumento(nfe);
 
         // prefixoAssinatura="" (em vez do "ds:" default do Apache Santuario): confirmado
