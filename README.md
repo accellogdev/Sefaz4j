@@ -529,7 +529,8 @@ ResultadoEvento cancelamento = Sefaz4jNFe.cancelar(config, chave, nProt, justifi
 `setTpEmis` existe no `Sefaz4jConfig` da NF-e e do CT-e. Inutilização e eventos do Ambiente Nacional
 (manifestação) ignoram esse campo. Os overrides de URL (`setUrl...Override`) continuam tendo prioridade.
 
-Nas contingências **offline** (MDF-e `tpEmis=2`, CT-e `4` EPEC e `5` FS-DA), o QR Code precisa do
+Nas contingências **offline** (MDF-e `tpEmis=2`; CT-e `tpEmis=2` desde a NT CT-e 2026.004, que extingue
+o `4` EPEC e o `5` FS-DA — em produção a partir de 16/11/2026), o QR Code precisa do
 parâmetro `&sign=`: a chave de acesso assinada com o certificado do emitente (SHA1withRSA, Base64).
 O `emitir` acrescenta esse parâmetro sozinho à URL que vier em `qrCodMDFe`/`qrCodCTe`, se ela ainda não
 tiver. O cálculo também está disponível em `AssinaturaQrCode.assinarChave(pfxBytes, senha, chave)`.

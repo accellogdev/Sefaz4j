@@ -10,7 +10,7 @@ import java.util.Base64;
 
 /**
  * Parâmetro {@code sign} do QR Code exigido nas contingências offline — MDF-e com tpEmis=2 e
- * CT-e com tpEmis=4 (EPEC) ou 5 (FS-DA): a chave de acesso assinada com o certificado do emitente
+ * CT-e com tpEmis=2 (NT CT-e 2026.004; antes dela, 4-EPEC e 5-FS-DA): a chave de acesso assinada com o certificado do emitente
  * (SHA1withRSA), em Base64, acrescentada como {@code &sign=} à URL do QR Code. É o mesmo cálculo do
  * ACBr ({@code SSL.CalcHash(chave, dgstSHA1, outBase64, True)}), conferido contra MDF-e autorizado
  * em produção com o certificado do próprio XML.

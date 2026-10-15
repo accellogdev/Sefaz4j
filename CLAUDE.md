@@ -397,7 +397,9 @@ Same rule as ACBr's `FormaEmissao` (`ACBrNFe.LerServicoDeParams`, `TACBrCTe.GetU
   doesn't route them either. Resolution lives in package-private `resolverUrlAutorizador`/
   `urlConsultaProtocolo`/`urlRecepcaoEvento*` (covered by `*RoteamentoContingenciaTest`); explicit
   `setUrl...Override`s still win. MDFe has no SVC (its `tpEmis` is only 1/2/3).
-- **QR Code `&sign=` in offline contingency** (MDFe `tpEmis=2`, CTe 4 EPEC / 5 FS-DA): the access key
+- **QR Code `&sign=` in offline contingency** (MDFe `tpEmis=2`; CTe `tpEmis=2` since NT CT-e 2026.004,
+  which retires 4 EPEC / 5 FS-DA — production 16/11/2026; the bundled CTe XSD is already the NT one, so it
+  rejects 4/5 locally): the access key
   signed SHA1withRSA with the emitter's certificate, Base64, appended to the caller-built `qrCodMDFe`/
   `qrCodCTe` URL. `emitir` does it on the DOM (after the builder injects the `Id`, before signing; the
   `infMDFeSupl`/`infCTeSupl` is outside the signed element anyway) only if the URL has no `&sign=` yet.
