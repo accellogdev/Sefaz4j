@@ -19,6 +19,8 @@ public final class Sefaz4jConfig {
     private int maxTentativasPolling = 5;
     private Duration intervaloPolling = Duration.ofSeconds(5);
     private String tpEmis;
+    private Integer idCsrt;
+    private String csrt;
 
     public Sefaz4jConfig(UF uf, Ambiente ambiente, byte[] pfxBytes, String senhaPfx) {
         this(uf, ambiente, pfxBytes, senhaPfx, null);
@@ -167,6 +169,26 @@ public final class Sefaz4jConfig {
      */
     public Sefaz4jConfig setTpEmis(String tpEmis) {
         this.tpEmis = tpEmis;
+        return this;
+    }
+
+    public Integer getIdCsrt() {
+        return idCsrt;
+    }
+
+    public String getCsrt() {
+        return csrt;
+    }
+
+    /**
+     * CSRT (código de segurança do responsável técnico) fornecido pela SEFAZ ao desenvolvedor do
+     * sistema — um por ambiente. Com ele, a emissão preenche {@code infRespTec/idCSRT} e
+     * {@code infRespTec/hashCSRT} (exigidos por algumas UFs) quando o documento tem
+     * {@code infRespTec}. Sem CSRT (padrão), o grupo vai sem esses dois campos.
+     */
+    public Sefaz4jConfig setCsrt(int idCsrt, String csrt) {
+        this.idCsrt = idCsrt;
+        this.csrt = csrt;
         return this;
     }
 }
