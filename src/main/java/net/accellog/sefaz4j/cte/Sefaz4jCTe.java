@@ -69,10 +69,11 @@ public final class Sefaz4jCTe {
 
         Document documento = montarDocumento(cte);
 
-        // EPEC (4) e FS-DA (5) são contingências offline: o QR Code leva também a chave assinada
-        // com o certificado (&sign=), como o ACBr faz (TACBrCTe.GetURLQRCode).
+        // Contingência offline: o QR Code leva também a chave assinada com o certificado (&sign=),
+        // como o ACBr faz (TACBrCTe.GetURLQRCode). Desde a NT CT-e 2026.004 é o tpEmis=2 (regras
+        // G215/H131); EPEC (4) e FS-DA (5), que ela extingue, ficam até sair do ar.
         String tpEmis = cte.getInfCte().getIde().getTpEmis();
-        if ("4".equals(tpEmis) || "5".equals(tpEmis)) {
+        if ("2".equals(tpEmis) || "4".equals(tpEmis) || "5".equals(tpEmis)) {
             AssinaturaQrCode.completarQrCode(documento, CTE_NAMESPACE, "qrCodCTe",
                 cte.getInfCte().getId().substring("CTe".length()), config.getPfxBytes(), config.getSenhaPfx());
         }

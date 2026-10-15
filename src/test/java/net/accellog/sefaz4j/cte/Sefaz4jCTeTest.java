@@ -218,7 +218,7 @@ public class Sefaz4jCTeTest {
         Sefaz4jCTe.emitir(config, cte);
     }
 
-    // FS-DA (5) e EPEC (4) são offline: o QR Code ganha &sign=; SVC (7/8) não.
+    // Contingência offline (tpEmis=2, NT CT-e 2026.004 — substitui EPEC/FS-DA): o QR Code ganha &sign=; SVC (7/8) não.
     @Test
     public void emitirEmContingenciaOffLineAcrescentaSignAoQrCodeESvcNao() {
         servidor.createContext("/recepcao-sinc-contingencia", exchange -> {
@@ -238,7 +238,7 @@ public class Sefaz4jCTeTest {
         );
         String urlQrCode = "https://nfe.fazenda.sp.gov.br/CTeConsulta/qrCode?chCTe=35250812345678000195575231000001231123456781";
 
-        for (String tpEmis : new String[] {"5", "8"}) {
+        for (String tpEmis : new String[] {"2", "8"}) {
             TCTe cte = montarCteMinimoValido();
             cte.getInfCte().getIde().setTpEmis(tpEmis);
             TCTe.InfCTeSupl supl = new ObjectFactory().createTCTeInfCTeSupl();
@@ -247,7 +247,7 @@ public class Sefaz4jCTeTest {
 
             String xml = Sefaz4jCTe.emitir(config, cte).getXmlAutorizado();
 
-            assertEquals(xml, "5".equals(tpEmis), xml.contains(urlQrCode + "&amp;tpAmb=1&amp;sign="));
+            assertEquals(xml, "2".equals(tpEmis), xml.contains(urlQrCode + "&amp;tpAmb=1&amp;sign="));
         }
     }
 

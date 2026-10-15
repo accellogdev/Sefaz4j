@@ -42,8 +42,8 @@ public class Sefaz4jCTeRoteamentoContingenciaTest {
 
     @Test
     public void contingenciaOffLineContinuaNaUF() {
-        // EPEC (4) e FS-DA (5): o CT-e é transmitido depois ao autorizador normal da UF.
-        for (String tpEmis : new String[] {"4", "5"}) {
+        // Contingência offline (2; antes da NT 2026.004, EPEC 4 e FS-DA 5): o CT-e é transmitido depois ao autorizador normal da UF.
+        for (String tpEmis : new String[] {"2", "4", "5"}) {
             assertEquals("https://homologacao.cte.fazenda.pr.gov.br/cte4/CTeConsultaV4",
                 Sefaz4jCTe.urlConsultaProtocolo(config(UF.PR).setTpEmis(tpEmis)));
         }
