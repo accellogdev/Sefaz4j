@@ -525,7 +525,8 @@ public final class Sefaz4jNFe {
         // um cancelamento/CC-e futuro sobre esta mesma NFe.
         String nProtFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "nProt") : null;
 
-        boolean autorizado = "100".equals(cStatFinal);
+        // 150 = "autorização fora de prazo" -- autorizada com protocolo, como no ACBr.
+        boolean autorizado = "100".equals(cStatFinal) || "150".equals(cStatFinal);
         // xmlAutorizado precisa ser um único documento XML bem-formado
         // ("pronto para persistência/DANFE"), não a concatenação crua de
         // dois elementos-raiz irmãos (NFe + protNFe) — por isso, quando há
