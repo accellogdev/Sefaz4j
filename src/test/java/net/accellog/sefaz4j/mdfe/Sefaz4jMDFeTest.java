@@ -578,6 +578,12 @@ public class Sefaz4jMDFeTest {
         assertEquals("135250000000006", resultado.getNProt());
         assertTrue(corpoCapturado.get().contains("<tpEvento>110112</tpEvento>"));
         assertTrue(corpoCapturado.get().contains("<dtEnc>2025-08-12</dtEnc>"));
+        // #51949: mesmo formato do bot Delphi no cancelamento (procEventoMDFe = eventoMDFe assinado +
+        // retEventoMDFe)
+        String xmlEvento = resultado.getXmlEvento();
+        assertTrue(xmlEvento.startsWith("<procEventoMDFe versao=\"3.00\" xmlns=\"http://www.portalfiscal.inf.br/mdfe\"><eventoMDFe "));
+        assertTrue(xmlEvento.indexOf("</eventoMDFe>") < xmlEvento.indexOf("<retEventoMDFe"));
+        assertTrue(xmlEvento.endsWith("</retEventoMDFe></procEventoMDFe>"));
     }
 
     @Test(expected = IllegalArgumentException.class)

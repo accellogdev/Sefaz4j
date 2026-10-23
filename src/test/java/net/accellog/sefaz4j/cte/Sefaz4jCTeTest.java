@@ -638,6 +638,11 @@ public class Sefaz4jCTeTest {
         assertEquals("135250000000003", resultado.getNProt());
         assertTrue(corpoCapturado.get().contains("<tpEvento>110110</tpEvento>"));
         assertTrue(corpoCapturado.get().contains("versaoEvento=\"4.00\""));
+        // #51949: mesmo formato do bot Delphi (procEventoCTe = eventoCTe assinado + retEventoCTe)
+        String xmlEvento = resultado.getXmlEvento();
+        assertTrue(xmlEvento.startsWith("<procEventoCTe versao=\"4.00\" xmlns=\"http://www.portalfiscal.inf.br/cte\"><eventoCTe "));
+        assertTrue(xmlEvento.indexOf("</eventoCTe>") < xmlEvento.indexOf("<retEventoCTe"));
+        assertTrue(xmlEvento.endsWith("</retEventoCTe></procEventoCTe>"));
     }
 
     @Test

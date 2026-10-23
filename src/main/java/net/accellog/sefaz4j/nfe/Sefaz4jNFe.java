@@ -433,7 +433,12 @@ public final class Sefaz4jNFe {
         String xMotivoFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "xMotivo") : resposta.getXMotivo();
         String nProtFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "nProt") : null;
 
-        return new ResultadoEvento("135".equals(cStatFinal), cStatFinal, xMotivoFinal, nProtFinal, protocoloXml);
+        // procEventoNFe, como o ACBr/bot Delphi gravava: a DACCE do Wezi lê o <evento> daqui (#51949).
+        String xmlEvento = protocoloXml != null
+            ? "<procEventoNFe versao=\"1.00\" xmlns=\"" + NFE_NAMESPACE + "\">" + xmlEventoAssinado + protocoloXml + "</procEventoNFe>"
+            : xmlEventoAssinado;
+
+        return new ResultadoEvento("135".equals(cStatFinal), cStatFinal, xMotivoFinal, nProtFinal, protocoloXml, xmlEvento);
     }
 
     // Consulta, cancelamento e CC-e de uma nota autorizada em SVC vão para o mesmo SVC

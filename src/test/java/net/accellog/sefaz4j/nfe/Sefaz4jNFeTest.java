@@ -382,6 +382,9 @@ public class Sefaz4jNFeTest {
         assertTrue(resultado.isOk());
         assertEquals("135", resultado.getCStat());
         assertEquals("135250000000002", resultado.getNProt());
+        assertTrue(resultado.getXmlEvento().startsWith("<procEventoNFe versao=\"1.00\" xmlns=\"http://www.portalfiscal.inf.br/nfe\"><evento "));
+        assertTrue(resultado.getXmlEvento().contains("<tpEvento>110111</tpEvento>"));
+        assertTrue(resultado.getXmlEvento().endsWith("</retEvento></procEventoNFe>"));
     }
 
     // Prova do finding #5 do review final: quando a SEFAZ rejeita o EVENTO no
@@ -492,6 +495,14 @@ public class Sefaz4jNFeTest {
         assertTrue(resultado.isOk());
         assertEquals("135", resultado.getCStat());
         assertEquals("135250000000003", resultado.getNProt());
+        // #51949: a DACCE do Wezi (sped-da Dacce) lê o <evento> assinado do XML gravado; com só o
+        // retEvento ela quebrava em "getElementsByTagName() on null".
+        String xmlEvento = resultado.getXmlEvento();
+        assertTrue(xmlEvento.startsWith("<procEventoNFe versao=\"1.00\" xmlns=\"http://www.portalfiscal.inf.br/nfe\"><evento "));
+        assertTrue(xmlEvento.contains("<xCorrecao>Correção de teste"));
+        assertTrue(xmlEvento.indexOf("</evento>") < xmlEvento.indexOf("<retEvento"));
+        assertTrue(xmlEvento.contains("<nProt>135250000000003</nProt>"));
+        assertTrue(xmlEvento.endsWith("</retEvento></procEventoNFe>"));
     }
 
     // Prova do finding #5 do review final: mesma forma de rejeição no nível
@@ -523,6 +534,9 @@ public class Sefaz4jNFeTest {
 
         assertFalse(resultado.isOk());
         assertEquals("999", resultado.getCStat());
+        // sem retEvento não há procEventoNFe: fica só o evento assinado, como em ResultadoEmissao
+        assertTrue(resultado.getXmlEvento().startsWith("<evento "));
+        assertTrue(resultado.getXmlEvento().endsWith("</evento>"));
     }
 
     @Test(expected = IllegalArgumentException.class)

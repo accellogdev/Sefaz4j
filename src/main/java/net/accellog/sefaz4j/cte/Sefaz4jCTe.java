@@ -348,7 +348,12 @@ public final class Sefaz4jCTe {
         String xMotivoFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "xMotivo") : resposta.getXMotivo();
         String nProtFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "nProt") : null;
 
-        return new ResultadoEvento("135".equals(cStatFinal), cStatFinal, xMotivoFinal, nProtFinal, protocoloXml);
+        // procEventoCTe, como o ACBr/bot Delphi gravava: a DACCE do Wezi lê o eventoCTe daqui (#51949).
+        String xmlEvento = protocoloXml != null
+            ? "<procEventoCTe versao=\"" + CTE_VERSAO + "\" xmlns=\"" + CTE_NAMESPACE + "\">" + xmlEventoAssinado + protocoloXml + "</procEventoCTe>"
+            : xmlEventoAssinado;
+
+        return new ResultadoEvento("135".equals(cStatFinal), cStatFinal, xMotivoFinal, nProtFinal, protocoloXml, xmlEvento);
     }
 
     private static String extrairTextoDoElemento(String xmlFragmento, String nomeLocalElemento) {
