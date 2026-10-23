@@ -403,7 +403,12 @@ public final class Sefaz4jMDFe {
         String xMotivoFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "xMotivo") : resposta.getXMotivo();
         String nProtFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "nProt") : null;
 
-        return new ResultadoEvento("135".equals(cStatFinal), cStatFinal, xMotivoFinal, nProtFinal, protocoloXml);
+        // procEventoMDFe, como o ACBr/bot Delphi gravava no cancelamento (#51949).
+        String xmlEvento = protocoloXml != null
+            ? "<procEventoMDFe versao=\"" + MDFE_VERSAO + "\" xmlns=\"" + MDFE_NAMESPACE + "\">" + xmlEventoAssinado + protocoloXml + "</procEventoMDFe>"
+            : xmlEventoAssinado;
+
+        return new ResultadoEvento("135".equals(cStatFinal), cStatFinal, xMotivoFinal, nProtFinal, protocoloXml, xmlEvento);
     }
 
     private static String extrairTextoDoElemento(String xmlFragmento, String nomeLocalElemento) {

@@ -310,7 +310,9 @@ public final class Sefaz4jCTe {
         // um cancelamento futuro sobre este mesmo CT-e.
         String nProtFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "nProt") : null;
 
-        boolean autorizado = "100".equals(cStatFinal);
+        // 150 = "autorização fora de prazo" (contingência offline transmitida depois de 168h,
+        // NT CT-e 2026.004 regra G103) -- autorizado com protocolo, como no ACBr.
+        boolean autorizado = "100".equals(cStatFinal) || "150".equals(cStatFinal);
         String xmlFinal = protocoloXml != null
             ? "<cteProc versao=\"4.00\" xmlns=\"" + CTE_NAMESPACE + "\">" + xmlAssinado + protocoloXml + "</cteProc>"
             : xmlAssinado;
@@ -346,7 +348,12 @@ public final class Sefaz4jCTe {
         String xMotivoFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "xMotivo") : resposta.getXMotivo();
         String nProtFinal = protocoloXml != null ? extrairTextoDoElemento(protocoloXml, "nProt") : null;
 
-        return new ResultadoEvento("135".equals(cStatFinal), cStatFinal, xMotivoFinal, nProtFinal, protocoloXml);
+        // procEventoCTe, como o ACBr/bot Delphi gravava: a DACCE do Wezi lê o eventoCTe daqui (#51949).
+        String xmlEvento = protocoloXml != null
+            ? "<procEventoCTe versao=\"" + CTE_VERSAO + "\" xmlns=\"" + CTE_NAMESPACE + "\">" + xmlEventoAssinado + protocoloXml + "</procEventoCTe>"
+            : xmlEventoAssinado;
+
+        return new ResultadoEvento("135".equals(cStatFinal), cStatFinal, xMotivoFinal, nProtFinal, protocoloXml, xmlEvento);
     }
 
     private static String extrairTextoDoElemento(String xmlFragmento, String nomeLocalElemento) {

@@ -126,6 +126,42 @@ public class Sefaz4jCTeTest {
             resultado.getXmlAutorizado().startsWith("<cteProc") && resultado.getXmlAutorizado().endsWith("</cteProc>"));
     }
 
+    // NT CT-e 2026.004 (regra G103): CT-e em contingência offline transmitido depois de 168h
+    // volta 150 "Autorizado o uso do CT-e, autorização fora de prazo" -- é uma autorização, com
+    // protocolo, e o ACBr (ACBrCTeWebServices) trata 100 e 150 igualmente.
+    @Test
+    public void enviarXmlAssinadoAutorizadoForaDePrazoEhAutorizado() {
+        servidor.createContext("/recepcao-sinc-fora-prazo", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><cteResultMsg xmlns=\"http://www.portalfiscal.inf.br/cte/wsdl/CTeRecepcaoSinc\">" +
+                "<retCTe xmlns=\"http://www.portalfiscal.inf.br/cte\" versao=\"4.00\">" +
+                "<tpAmb>1</tpAmb><verAplic>SP_1.0.0</verAplic>" +
+                "<cStat>150</cStat><xMotivo>Autorizado o uso do CT-e, autorizacao fora de prazo</xMotivo>" +
+                "<protCTe versao=\"4.00\"><infProt>" +
+                "<tpAmb>1</tpAmb><verAplic>SP_1.0.0</verAplic>" +
+                "<chCTe>35250812345678000195570010000001231123456789</chCTe>" +
+                "<dhRecbto>2025-08-12T10:00:05-03:00</dhRecbto>" +
+                "<nProt>135250000000005</nProt>" +
+                "<cStat>150</cStat><xMotivo>Autorizado o uso do CT-e, autorizacao fora de prazo</xMotivo>" +
+                "</infProt></protCTe>" +
+                "</retCTe></cteResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+
+        Sefaz4jConfig config = new Sefaz4jConfig(
+            UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123",
+            "https://localhost:" + servidor.getAddress().getPort() + "/recepcao-sinc-fora-prazo"
+        );
+
+        ResultadoEmissao resultado = Sefaz4jCTe.enviarXmlAssinado(config, xmlCteAssinadoValido());
+
+        assertTrue(resultado.isOk());
+        assertEquals("150", resultado.getCStat());
+        assertEquals("135250000000005", resultado.getNProt());
+    }
+
     @Test
     public void enviarXmlAssinadoRetornaRejeitadoSemLancarExcecao() {
         servidor.createContext("/recepcao-sinc-rejeitada", exchange -> {
@@ -602,6 +638,11 @@ public class Sefaz4jCTeTest {
         assertEquals("135250000000003", resultado.getNProt());
         assertTrue(corpoCapturado.get().contains("<tpEvento>110110</tpEvento>"));
         assertTrue(corpoCapturado.get().contains("versaoEvento=\"4.00\""));
+        // #51949: mesmo formato do bot Delphi (procEventoCTe = eventoCTe assinado + retEventoCTe)
+        String xmlEvento = resultado.getXmlEvento();
+        assertTrue(xmlEvento.startsWith("<procEventoCTe versao=\"4.00\" xmlns=\"http://www.portalfiscal.inf.br/cte\"><eventoCTe "));
+        assertTrue(xmlEvento.indexOf("</eventoCTe>") < xmlEvento.indexOf("<retEventoCTe"));
+        assertTrue(xmlEvento.endsWith("</retEventoCTe></procEventoCTe>"));
     }
 
     @Test

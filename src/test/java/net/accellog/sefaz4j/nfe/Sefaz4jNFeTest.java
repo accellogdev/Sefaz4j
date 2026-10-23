@@ -170,6 +170,37 @@ public class Sefaz4jNFeTest {
             resultado.getXmlAutorizado().startsWith("<nfeProc") && resultado.getXmlAutorizado().endsWith("</nfeProc>"));
     }
 
+    // 150 "Autorizado o uso da NF-e, autorização fora de prazo" é uma autorização com protocolo
+    // (o ACBr aceita 100 e 150); o bot Delphi gravou como rejeitadas as NF-e que receberam 150.
+    @Test
+    public void enviarXmlAssinadoAutorizadaForaDePrazoEhAutorizada() {
+        servidor.createContext("/autorizacao-fora-prazo", exchange -> {
+            byte[] resposta = ("<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">" +
+                "<soap:Body><nfeResultMsg xmlns=\"http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4\">" +
+                "<retEnviNFe xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"4.00\">" +
+                "<cStat>104</cStat><xMotivo>Lote processado</xMotivo>" +
+                "<protNFe versao=\"4.00\"><infProt>" +
+                "<chNFe>35250812345678000195550010000001231123456789</chNFe>" +
+                "<cStat>150</cStat><xMotivo>Autorizado o uso da NF-e, autorizacao fora de prazo</xMotivo>" +
+                "<nProt>135250000000001</nProt>" +
+                "</infProt></protNFe>" +
+                "</retEnviNFe></nfeResultMsg></soap:Body></soap:Envelope>").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+        Sefaz4jConfig config = new Sefaz4jConfig(
+            UF.SP, Ambiente.PRODUCAO, pfxBytes, "teste123",
+            "https://localhost:" + servidor.getAddress().getPort() + "/autorizacao-fora-prazo"
+        );
+
+        ResultadoEmissao resultado = Sefaz4jNFe.enviarXmlAssinado(config, xmlAssinadoValido());
+
+        assertTrue(resultado.isOk());
+        assertEquals("150", resultado.getCStat());
+        assertTrue(resultado.getXmlAutorizado().startsWith("<nfeProc"));
+    }
+
     // Prova do contrato de erro corrigido (finding #1 do review final):
     // ok=false deve significar SOMENTE "SEFAZ devolveu cStat != 100" — uma
     // falha técnica de validação de schema tem que se propagar como
@@ -351,6 +382,9 @@ public class Sefaz4jNFeTest {
         assertTrue(resultado.isOk());
         assertEquals("135", resultado.getCStat());
         assertEquals("135250000000002", resultado.getNProt());
+        assertTrue(resultado.getXmlEvento().startsWith("<procEventoNFe versao=\"1.00\" xmlns=\"http://www.portalfiscal.inf.br/nfe\"><evento "));
+        assertTrue(resultado.getXmlEvento().contains("<tpEvento>110111</tpEvento>"));
+        assertTrue(resultado.getXmlEvento().endsWith("</retEvento></procEventoNFe>"));
     }
 
     // Prova do finding #5 do review final: quando a SEFAZ rejeita o EVENTO no
@@ -461,6 +495,14 @@ public class Sefaz4jNFeTest {
         assertTrue(resultado.isOk());
         assertEquals("135", resultado.getCStat());
         assertEquals("135250000000003", resultado.getNProt());
+        // #51949: a DACCE do Wezi (sped-da Dacce) lê o <evento> assinado do XML gravado; com só o
+        // retEvento ela quebrava em "getElementsByTagName() on null".
+        String xmlEvento = resultado.getXmlEvento();
+        assertTrue(xmlEvento.startsWith("<procEventoNFe versao=\"1.00\" xmlns=\"http://www.portalfiscal.inf.br/nfe\"><evento "));
+        assertTrue(xmlEvento.contains("<xCorrecao>Correção de teste"));
+        assertTrue(xmlEvento.indexOf("</evento>") < xmlEvento.indexOf("<retEvento"));
+        assertTrue(xmlEvento.contains("<nProt>135250000000003</nProt>"));
+        assertTrue(xmlEvento.endsWith("</retEvento></procEventoNFe>"));
     }
 
     // Prova do finding #5 do review final: mesma forma de rejeição no nível
@@ -492,6 +534,9 @@ public class Sefaz4jNFeTest {
 
         assertFalse(resultado.isOk());
         assertEquals("999", resultado.getCStat());
+        // sem retEvento não há procEventoNFe: fica só o evento assinado, como em ResultadoEmissao
+        assertTrue(resultado.getXmlEvento().startsWith("<evento "));
+        assertTrue(resultado.getXmlEvento().endsWith("</evento>"));
     }
 
     @Test(expected = IllegalArgumentException.class)
