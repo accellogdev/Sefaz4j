@@ -40,5 +40,23 @@ public class EventoMDFeXmlBuilderTest {
 
         NodeList verEventoList = raiz.getElementsByTagNameNS("*", "verEvento");
         assertEquals(0, verEventoList.getLength());
+
+        assertEquals("12345678000195",
+            raiz.getElementsByTagNameNS("http://www.portalfiscal.inf.br/mdfe", "CNPJ").item(0).getTextContent());
+        assertEquals(0, raiz.getElementsByTagNameNS("http://www.portalfiscal.inf.br/mdfe", "CPF").getLength());
+    }
+
+    /** #52073: emitente pessoa física — infEvento é choice CNPJ|CPF, como o Delphi gravava. */
+    @Test
+    public void autorComOnzeDigitosSaiEmCpf() {
+        Document documento = EventoMDFeXmlBuilder.montar(
+            "35", "2", "12345678909", "35261100012345678909589200000000061001390814",
+            "110112", 1, "3.00", "<detEvento versaoEvento=\"3.00\"/>"
+        );
+
+        Element raiz = documento.getDocumentElement();
+        assertEquals("12345678909",
+            raiz.getElementsByTagNameNS("http://www.portalfiscal.inf.br/mdfe", "CPF").item(0).getTextContent());
+        assertEquals(0, raiz.getElementsByTagNameNS("http://www.portalfiscal.inf.br/mdfe", "CNPJ").getLength());
     }
 }

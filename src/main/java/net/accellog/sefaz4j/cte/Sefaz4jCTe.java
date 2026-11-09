@@ -2,6 +2,7 @@ package net.accellog.sefaz4j.cte;
 
 import net.accellog.sefaz4j.assinatura.AssinadorXml;
 import net.accellog.sefaz4j.assinatura.AssinaturaQrCode;
+import net.accellog.sefaz4j.chave.ChaveAcessoEmitente;
 import net.accellog.sefaz4j.cte.endpoints.Servico;
 import net.accellog.sefaz4j.cte.model.TCTe;
 import net.accellog.sefaz4j.cte.webservice.SoapEnvelopeBuilder;
@@ -144,7 +145,7 @@ public final class Sefaz4jCTe {
         }
 
         String cUF = chaveAcesso.substring(0, 2);
-        String cnpj = chaveAcesso.substring(6, 20);
+        String cnpj = ChaveAcessoEmitente.cnpjOuCpf(chaveAcesso);
 
         String evCancCTeFragmento = "<evCancCTe xmlns=\"" + CTE_NAMESPACE + "\">" +
             "<descEvento>Cancelamento</descEvento>" +
@@ -183,7 +184,7 @@ public final class Sefaz4jCTe {
         }
 
         String cUF = chaveAcesso.substring(0, 2);
-        String cnpj = chaveAcesso.substring(6, 20);
+        String cnpj = ChaveAcessoEmitente.cnpjOuCpf(chaveAcesso);
 
         StringBuilder infCorrecoesXml = new StringBuilder();
         for (InfCorrecao correcao : correcoes) {

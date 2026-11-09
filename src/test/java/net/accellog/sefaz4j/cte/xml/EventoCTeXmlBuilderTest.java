@@ -44,4 +44,17 @@ public class EventoCTeXmlBuilderTest {
         NodeList verEventoList = raiz.getElementsByTagNameNS("*", "verEvento");
         assertEquals(0, verEventoList.getLength());
     }
+
+    @Test
+    public void autorComOnzeDigitosSaiEmCpf() {
+        Document documento = EventoCTeXmlBuilder.montar(
+            "35", "2", "12345678909", "35261100012345678909570010000000063001390814",
+            "110111", 1, "4.00", "<detEvento versaoEvento=\"4.00\"/>"
+        );
+
+        Element raiz = documento.getDocumentElement();
+        assertEquals("12345678909",
+            raiz.getElementsByTagNameNS("http://www.portalfiscal.inf.br/cte", "CPF").item(0).getTextContent());
+        assertEquals(0, raiz.getElementsByTagNameNS("http://www.portalfiscal.inf.br/cte", "CNPJ").getLength());
+    }
 }

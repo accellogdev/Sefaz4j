@@ -1,6 +1,7 @@
 package net.accellog.sefaz4j.nfe;
 
 import net.accellog.sefaz4j.assinatura.AssinadorXml;
+import net.accellog.sefaz4j.chave.ChaveAcessoEmitente;
 import net.accellog.sefaz4j.endpoints.EndpointResolver;
 import net.accellog.sefaz4j.endpoints.UF;
 import net.accellog.sefaz4j.nfe.endpoints.Servico;
@@ -180,7 +181,7 @@ public final class Sefaz4jNFe {
         }
 
         String cUF = chaveAcesso.substring(0, 2);
-        String cnpj = chaveAcesso.substring(6, 20);
+        String cnpj = ChaveAcessoEmitente.cnpjOuCpf(chaveAcesso);
 
         String detEvento = "<detEvento versao=\"1.00\">" +
             "<descEvento>Cancelamento</descEvento>" +
@@ -215,7 +216,7 @@ public final class Sefaz4jNFe {
         exigirTamanho(textoCorrecao, TAMANHO_MINIMO_TEXTO_CORRECAO, TAMANHO_MAXIMO_TEXTO_CORRECAO, "texto de correção da CC-e");
 
         String cUF = chaveAcesso.substring(0, 2);
-        String cnpj = chaveAcesso.substring(6, 20);
+        String cnpj = ChaveAcessoEmitente.cnpjOuCpf(chaveAcesso);
 
         String detEvento = "<detEvento versao=\"1.00\">" +
             "<descEvento>Carta de Correção</descEvento>" +
