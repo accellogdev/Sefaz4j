@@ -2,6 +2,7 @@ package net.accellog.sefaz4j.mdfe;
 
 import net.accellog.sefaz4j.assinatura.AssinadorXml;
 import net.accellog.sefaz4j.assinatura.AssinaturaQrCode;
+import net.accellog.sefaz4j.chave.ChaveAcessoEmitente;
 import net.accellog.sefaz4j.endpoints.EndpointResolver;
 import net.accellog.sefaz4j.mdfe.endpoints.Servico;
 import net.accellog.sefaz4j.mdfe.model.TMDFe;
@@ -141,7 +142,7 @@ public final class Sefaz4jMDFe {
         exigirNProtValido(nProt);
 
         String cUF = chaveAcesso.substring(0, 2);
-        String cnpj = chaveAcesso.substring(6, 20);
+        String cnpj = ChaveAcessoEmitente.cnpjOuCpf(chaveAcesso);
 
         String evCancMDFeFragmento = "<evCancMDFe xmlns=\"" + MDFE_NAMESPACE + "\">" +
             "<descEvento>Cancelamento</descEvento>" +
@@ -167,7 +168,7 @@ public final class Sefaz4jMDFe {
         exigirNProtValido(nProt);
 
         String cUF = chaveAcesso.substring(0, 2);
-        String cnpj = chaveAcesso.substring(6, 20);
+        String cnpj = ChaveAcessoEmitente.cnpjOuCpf(chaveAcesso);
 
         String evEncMDFeFragmento = "<evEncMDFe xmlns=\"" + MDFE_NAMESPACE + "\">" +
             "<descEvento>Encerramento</descEvento>" +
@@ -196,7 +197,7 @@ public final class Sefaz4jMDFe {
         exigirChaveAcessoValida(chaveAcesso);
 
         String cUF = chaveAcesso.substring(0, 2);
-        String cnpj = chaveAcesso.substring(6, 20);
+        String cnpj = ChaveAcessoEmitente.cnpjOuCpf(chaveAcesso);
 
         String evIncCondutorMDFeFragmento = "<evIncCondutorMDFe xmlns=\"" + MDFE_NAMESPACE + "\">" +
             "<descEvento>Inclusao Condutor</descEvento>" +
@@ -239,7 +240,7 @@ public final class Sefaz4jMDFe {
         }
 
         String cUF = chaveAcesso.substring(0, 2);
-        String cnpj = chaveAcesso.substring(6, 20);
+        String cnpj = ChaveAcessoEmitente.cnpjOuCpf(chaveAcesso);
 
         StringBuilder infDocXml = new StringBuilder();
         for (InfDocInclusao documento : documentos) {

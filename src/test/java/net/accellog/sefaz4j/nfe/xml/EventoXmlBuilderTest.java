@@ -74,6 +74,17 @@ public class EventoXmlBuilderTest {
             schemaPattern.matcher(dhEvento).matches());
     }
 
+    @Test
+    public void autorComOnzeDigitosSaiEmCpf() {
+        Document documento = EventoXmlBuilder.montar(
+            "35", "1", "12345678909", CHAVE, "110111", 1, "1.00", "<detEvento versao=\"1.00\"/>"
+        );
+
+        Element infEvento = (Element) documento.getElementsByTagNameNS(NFE_NS, "infEvento").item(0);
+        assertEquals("12345678909", textoDoFilho(infEvento, "CPF"));
+        assertEquals(0, infEvento.getElementsByTagNameNS(NFE_NS, "CNPJ").getLength());
+    }
+
     private static String textoDoFilho(Element pai, String nomeLocal) {
         return ((Element) pai.getElementsByTagNameNS(NFE_NS, nomeLocal).item(0)).getTextContent();
     }

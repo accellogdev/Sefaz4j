@@ -1,5 +1,6 @@
 package net.accellog.sefaz4j.mdfe.xml;
 
+import net.accellog.sefaz4j.chave.ChaveAcessoEmitente;
 import org.w3c.dom.Document;
 
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -43,7 +44,7 @@ public final class EventoMDFeXmlBuilder {
             "<infEvento Id=\"" + id + "\">" +
             "<cOrgao>" + cOrgao + "</cOrgao>" +
             "<tpAmb>" + tpAmb + "</tpAmb>" +
-            "<CNPJ>" + cnpjAutor + "</CNPJ>" +
+            ChaveAcessoEmitente.elementoAutor(cnpjAutor) +
             "<chMDFe>" + chMDFe + "</chMDFe>" +
             "<dhEvento>" + dhEvento + "</dhEvento>" +
             "<tpEvento>" + tpEvento + "</tpEvento>" +

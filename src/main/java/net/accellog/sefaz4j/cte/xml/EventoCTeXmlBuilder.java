@@ -1,5 +1,6 @@
 package net.accellog.sefaz4j.cte.xml;
 
+import net.accellog.sefaz4j.chave.ChaveAcessoEmitente;
 import org.w3c.dom.Document;
 
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -50,7 +51,7 @@ public final class EventoCTeXmlBuilder {
             "<infEvento Id=\"" + id + "\">" +
             "<cOrgao>" + cOrgao + "</cOrgao>" +
             "<tpAmb>" + tpAmb + "</tpAmb>" +
-            "<CNPJ>" + cnpjAutor + "</CNPJ>" +
+            ChaveAcessoEmitente.elementoAutor(cnpjAutor) +
             "<chCTe>" + chCTe + "</chCTe>" +
             "<dhEvento>" + dhEvento + "</dhEvento>" +
             "<tpEvento>" + tpEvento + "</tpEvento>" +
