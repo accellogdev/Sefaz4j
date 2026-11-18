@@ -30,6 +30,24 @@ public class Sefaz4jConfigTest {
     }
 
     @Test
+    public void leiauteSemOverrideEhOVigenteNoAmbiente() {
+        Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, new byte[0], "senha");
+
+        assertEquals(LeiauteNFSe.NT009, config.getLeiaute());
+    }
+
+    @Test
+    public void setLeiauteFixaOLeiauteENullVoltaAoAutomatico() {
+        Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, new byte[0], "senha");
+
+        assertEquals(config, config.setLeiaute(LeiauteNFSe.NT004));
+        assertEquals(LeiauteNFSe.NT004, config.getLeiaute());
+
+        config.setLeiaute(null);
+        assertEquals(LeiauteNFSe.NT009, config.getLeiaute());
+    }
+
+    @Test
     public void setTimeoutEhFluenteEEfetivo() {
         Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.HOMOLOGACAO, new byte[0], "senha");
 

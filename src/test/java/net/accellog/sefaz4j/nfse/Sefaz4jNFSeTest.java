@@ -7,6 +7,7 @@ import net.accellog.sefaz4j.nfse.model.ObjectFactory;
 import net.accellog.sefaz4j.nfse.model.TCCServ;
 import net.accellog.sefaz4j.nfse.model.TCDPS;
 import net.accellog.sefaz4j.nfse.model.TCInfDPS;
+import net.accellog.sefaz4j.nfse.model.TCInfoAjusteBC;
 import net.accellog.sefaz4j.nfse.model.TCInfoPrestador;
 import net.accellog.sefaz4j.nfse.model.TCInfoTributacao;
 import net.accellog.sefaz4j.nfse.model.TCInfoValores;
@@ -17,6 +18,7 @@ import net.accellog.sefaz4j.nfse.model.TCSubstituicao;
 import net.accellog.sefaz4j.nfse.model.TCTribMunicipal;
 import net.accellog.sefaz4j.nfse.model.TCTribTotal;
 import net.accellog.sefaz4j.nfse.model.TCVServPrest;
+import net.accellog.sefaz4j.validacao.ValidacaoXsdException;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -34,6 +36,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 public class Sefaz4jNFSeTest {
 
@@ -210,6 +213,95 @@ public class Sefaz4jNFSeTest {
     }
 
     /**
+     * Produção até 30/11/2026 (NT 004): {@code emitir} rebaixa o DOM antes de assinar — sai sem
+     * {@code finNFSe} e com {@code vDedRed/vDR} no lugar de {@code vAjusteBC/vAjusteBCISSQN} — e
+     * valida contra a XSD da NT 004.
+     */
+    @Test
+    public void emitirNoLeiauteNT004TransmiteDpsRebaixada() {
+        StringBuilder dpsTransmitida = capturarDpsTransmitida("/nfse-nt004");
+
+        Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.PRODUCAO, pfxBytes, "teste123")
+            .setLeiaute(LeiauteNFSe.NT004)
+            .setUrlOverride("https://localhost:" + servidor.getAddress().getPort() + "/nfse-nt004");
+
+        ResultadoEmissao resultado = Sefaz4jNFSe.emitir(config, montarDpsMinimaValidaComAjusteBC());
+
+        assertTrue(resultado.isOk());
+        String xml = dpsTransmitida.toString();
+        assertFalse(xml, xml.contains("finNFSe"));
+        assertFalse(xml, xml.contains("AjusteBC"));
+        assertTrue(xml, xml.contains("<vDedRed><vDR>10.00</vDR></vDedRed>"));
+    }
+
+    @Test
+    public void emitirNoLeiauteNT009TransmiteFinNFSeEVAjusteBC() {
+        StringBuilder dpsTransmitida = capturarDpsTransmitida("/nfse-nt009");
+
+        Sefaz4jConfig config = new Sefaz4jConfig(Ambiente.PRODUCAO, pfxBytes, "teste123")
+            .setLeiaute(LeiauteNFSe.NT009)
+            .setUrlOverride("https://localhost:" + servidor.getAddress().getPort() + "/nfse-nt009");
+
+        ResultadoEmissao resultado = Sefaz4jNFSe.emitir(config, montarDpsMinimaValidaComAjusteBC());
+
+        assertTrue(resultado.isOk());
+        String xml = dpsTransmitida.toString();
+        assertTrue(xml, xml.contains("<tpEmit>1</tpEmit><finNFSe>0</finNFSe><cLocEmi>"));
+        assertTrue(xml, xml.contains("<vAjusteBC><vAjusteBCISSQN>10.00</vAjusteBCISSQN></vAjusteBC>"));
+    }
+
+    /** Uma DPS da NT 009 enviada com o leiaute NT 004 é barrada pela XSD antiga, sem transmitir. */
+    @Test
+    public void enviarXmlAssinadoValidaContraAXsdDoLeiauteDaConfig() {
+        Sefaz4jConfig nt004 = new Sefaz4jConfig(Ambiente.PRODUCAO, pfxBytes, "teste123")
+            .setLeiaute(LeiauteNFSe.NT004)
+            .setUrlOverride("https://localhost:" + servidor.getAddress().getPort() + "/nao-deve-ser-chamado");
+
+        try {
+            Sefaz4jNFSe.enviarXmlAssinado(nt004, xmlDpsAssinadoValido());
+            fail("finNFSe não existe na NT 004");
+        } catch (ValidacaoXsdException e) {
+            assertTrue(String.join("\n", e.getViolacoes()), String.join("\n", e.getViolacoes()).contains("finNFSe"));
+        }
+
+        StringBuilder dpsTransmitida = capturarDpsTransmitida("/nfse-xml-nt004");
+        nt004.setUrlOverride("https://localhost:" + servidor.getAddress().getPort() + "/nfse-xml-nt004");
+        ResultadoEmissao resultado = Sefaz4jNFSe.enviarXmlAssinado(nt004,
+            xmlDpsAssinadoValido().replace("<finNFSe>0</finNFSe>", ""));
+        assertTrue(resultado.isOk());
+        assertFalse(dpsTransmitida.toString().isEmpty());
+    }
+
+    private StringBuilder capturarDpsTransmitida(String caminho) {
+        StringBuilder dpsTransmitida = new StringBuilder();
+        servidor.createContext(caminho, exchange -> {
+            String requisicao = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"dpsXmlGZipB64\"\\s*:\\s*\"([^\"]+)\"").matcher(requisicao);
+            if (m.find()) {
+                dpsTransmitida.append(net.accellog.sefaz4j.nfse.webservice.PayloadCompactado.decodificarEDescomprimir(m.group(1)));
+            }
+            String xmlNFSe = "<NFSe xmlns=\"http://www.sped.fazenda.gov.br/nfse\"><infNFSe Id=\"NFS789\"><cStat>100</cStat></infNFSe></NFSe>";
+            String corpoJson = "{\"chaveAcesso\":\"352025123456780001950005100000000000067890\",\"nfseXmlGZipB64\":\""
+                + net.accellog.sefaz4j.nfse.webservice.PayloadCompactado.comprimirECodificar(xmlNFSe) + "\"}";
+            byte[] resposta = corpoJson.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, resposta.length);
+            exchange.getResponseBody().write(resposta);
+            exchange.close();
+        });
+        return dpsTransmitida;
+    }
+
+    private static TCDPS montarDpsMinimaValidaComAjusteBC() {
+        TCDPS dps = montarDpsMinimaValida();
+        TCInfoAjusteBC ajuste = new TCInfoAjusteBC();
+        ajuste.setVAjusteBCISSQN("10.00");
+        dps.getInfDPS().getValores().setVAjusteBC(ajuste);
+        return dps;
+    }
+
+    /**
      * Mesma DPS mínima de {@link #xmlDpsAssinadoValido()}, mas como objeto {@code TCDPS} — é a forma
      * que {@code Sefaz4jNFSe.emitir} recebe. Deliberadamente sem {@code infDPS/@Id}, para que o
      * {@code DpsXmlBuilder} chamado por {@code emitir} o calcule e injete. O {@code versao} do
@@ -229,6 +321,7 @@ public class Sefaz4jNFSeTest {
         infDPS.setNDPS("100000000000123");
         infDPS.setDCompet("2025-08-12");
         infDPS.setTpEmit("1");
+        infDPS.setFinNFSe("0");
         infDPS.setCLocEmi("3550308");
 
         TCInfoPrestador prest = new TCInfoPrestador();
@@ -754,6 +847,7 @@ public class Sefaz4jNFSeTest {
             "<nDPS>100000000000123</nDPS>" +
             "<dCompet>2025-08-12</dCompet>" +
             "<tpEmit>1</tpEmit>" +
+            "<finNFSe>0</finNFSe>" +
             "<cLocEmi>3550308</cLocEmi>" +
             "<prest>" +
             "<CNPJ>12345678000195</CNPJ>" +

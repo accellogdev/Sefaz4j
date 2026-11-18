@@ -155,10 +155,11 @@ both request and response (see `net.accellog.sefaz4j.nfse.webservice.PayloadComp
 
 - **`Sefaz4jNFSe`** — the facade, with 5 methods:
   - `emitir(Sefaz4jConfig config, TCDPS dps): ResultadoEmissao` — injects `infDPS/@Id` (via
-    `DpsIdCalculator`) if absent, signs `infDPS`, XSD-validates against `DPS_v1.01.xsd`, POSTs the
+    `DpsIdCalculator`) if absent, downgrades the DOM to the NT 004 layout when that's the config's
+    layout (see below), signs `infDPS`, XSD-validates against the layout's `DPS_v1.01.xsd`, POSTs the
     compressed/encoded JSON body, and parses the response.
   - `enviarXmlAssinado(Sefaz4jConfig config, String xmlAssinado): ResultadoEmissao` — skips straight
-    to validate+transmit for an already-signed DPS XML.
+    to validate+transmit for an already-signed DPS XML (validated against the config's layout).
   - `consultarSituacao(Sefaz4jConfig config, String chaveAcesso): ResultadoConsulta` — GETs
     `{baseUrl}/{chaveAcesso}`.
   - `cancelar(Sefaz4jConfig config, String chaveAcesso, String cnpjAutor, int cMotivo, String xMotivo): ResultadoEvento`
@@ -172,6 +173,17 @@ both request and response (see `net.accellog.sefaz4j.nfse.webservice.PayloadComp
   from `DPS_v1.01.xsd`) — the DPS (Declaração de Prestação de Serviços), analogous to how NFe/CTe
   build `TNFe`/`TCTe`. The root XML element is `<DPS>` (`ObjectFactory.createDPS`), but its Java type
   is `TCDPS`, not a class literally named `DPS`.
+- **Two DPS layouts during the NT 009 transition.** The bundled `schemas/nfse/*.xsd` and the JAXB model
+  are the NT 009 v1.01 layout (ACBr's `PadraoNacional/1.01/Homologacao`): `infDPS/finNFSe` is mandatory
+  (only `0`), and `valores/vDedRed`/`vDR`/`pDR` became `vAjusteBC`/`vAjusteBCISSQN`/`pAjusteBCISSQN`.
+  The SEFIN Nacional production keeps the NT 004 v2.0 layout until 30/11/2026 (`schemas/nfse/nt004/`,
+  ACBr's `Producao`; produção restrita is already on NT 009). `LeiauteNFSe.vigente(ambiente, instant)`
+  picks NT 004 only for PRODUCAO before 2026-12-01T00:00 America/Sao_Paulo; `Sefaz4jConfig.setLeiaute`
+  pins one. For NT 004, `nfse.xml.DpsLeiauteNT004` removes `finNFSe` and renames `vAjusteBC` back before
+  signing (`documentos` has no NT 004 equivalent and is refused); anything else NT 009-only is caught by
+  the NT 004 XSD. The wrong layout is answered with E1235 "Falha no esquema XML do DF-e" (confirmed in
+  produção restrita, 2026-11-18). After 01/12/2026 the NT 004 branch and `nt004/` can be removed. The
+  event XSDs (`tiposEventos`, `pedRegEvento`) are identical in both layouts.
 - **Three distinct, non-interchangeable identifiers:**
   1. `infDPS/@Id` — the DPS's own Id, computed locally by `net.accellog.sefaz4j.nfse.chave.DpsIdCalculator`
      when absent: `"DPS" + cLocEmi(7) + tipoInscricaoFederal(1) + inscricaoFederal(14) + serie(5) +
