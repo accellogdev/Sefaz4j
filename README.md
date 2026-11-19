@@ -422,6 +422,11 @@ if (resultado.isOk()) {
 Se o XML já vier assinado por outro processo, pule direto para validação+transmissão com
 `Sefaz4jNFSe.enviarXmlAssinado(config, xmlAssinado)`.
 
+O modelo `TCDPS` segue o leiaute da **NT 009 v1.01** (`infDPS/finNFSe` obrigatório, `valores/vAjusteBC`
+no lugar de `vDedRed`). O SEFIN Nacional de produção só passa a aceitá-lo em **01/12/2026**; até lá,
+`emitir` em `Ambiente.PRODUCAO` rebaixa a DPS para o leiaute da NT 004 antes de assinar
+(`LeiauteNFSe.vigente`). Para fixar um leiaute, use `config.setLeiaute(LeiauteNFSe.NT004)` ou `NT009`.
+
 Diferente de NFe/CTe/MDFe, os resultados da NFS-e expõem `getMensagem()` em vez de `getXMotivo()`
 (mesmo nome do campo na resposta JSON do ADN); as mesmas 3 exceções técnicas
 (`CertificadoException`/`ValidacaoXsdException`/`ComunicacaoException`) valem aqui também.

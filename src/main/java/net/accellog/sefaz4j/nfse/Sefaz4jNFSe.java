@@ -6,6 +6,7 @@ import net.accellog.sefaz4j.nfse.model.TCSubstituicao;
 import net.accellog.sefaz4j.nfse.webservice.PayloadCompactado;
 import net.accellog.sefaz4j.nfse.webservice.RespostaNFSe;
 import net.accellog.sefaz4j.nfse.webservice.RespostaNFSeParser;
+import net.accellog.sefaz4j.nfse.xml.DpsLeiauteNT004;
 import net.accellog.sefaz4j.nfse.xml.DpsXmlBuilder;
 import net.accellog.sefaz4j.nfse.xml.EventoNFSeXmlBuilder;
 import net.accellog.sefaz4j.validacao.ValidadorXsd;
@@ -32,7 +33,6 @@ import java.io.StringWriter;
 public final class Sefaz4jNFSe {
 
     private static final String NFSE_NAMESPACE = "http://www.sped.fazenda.gov.br/nfse";
-    private static final String DPS_XSD_RAIZ = "/schemas/nfse/DPS_v1.01.xsd";
     private static final String PED_REG_EVENTO_XSD_RAIZ = "/schemas/nfse/pedRegEvento_v1.01.xsd";
     // Nomes de campo JSON CONFIRMADOS 2026-09-10 contra o código-fonte do ACBr (implementação de
     // referência, testada com sucesso real em Homologação no mesmo dia) —
@@ -93,8 +93,17 @@ public final class Sefaz4jNFSe {
     private Sefaz4jNFSe() {
     }
 
+    /**
+     * Monta, assina, valida e transmite a DPS no leiaute {@link Sefaz4jConfig#getLeiaute()}. O
+     * {@code TCDPS} segue o modelo da NT 009; no leiaute NT 004 o DOM é rebaixado
+     * ({@link DpsLeiauteNT004}) antes da assinatura.
+     */
     public static ResultadoEmissao emitir(Sefaz4jConfig config, TCDPS dps) {
+        LeiauteNFSe leiaute = config.getLeiaute();
         Document documento = montarDocumento(dps);
+        if (leiaute == LeiauteNFSe.NT004) {
+            DpsLeiauteNT004.rebaixar(documento);
+        }
 
         // prefixoAssinatura="" : SEFIN Nacional rejeita ds:Signature com prefixo (E1228) — ver
         // AssinadorXml.assinar(..., prefixoAssinatura) para o porquê.
@@ -102,11 +111,12 @@ public final class Sefaz4jNFSe {
 
         String xmlAssinado = serializarDocumento(documento);
 
-        return enviarEProcessar(config, xmlAssinado);
+        return enviarEProcessar(config, xmlAssinado, leiaute);
     }
 
+    /** Transmite uma DPS já assinada, validada contra a XSD do leiaute {@link Sefaz4jConfig#getLeiaute()}. */
     public static ResultadoEmissao enviarXmlAssinado(Sefaz4jConfig config, String xmlAssinado) {
-        return enviarEProcessar(config, xmlAssinado);
+        return enviarEProcessar(config, xmlAssinado, config.getLeiaute());
     }
 
     public static ResultadoConsulta consultarSituacao(Sefaz4jConfig config, String chaveAcesso) {
@@ -370,8 +380,8 @@ public final class Sefaz4jNFSe {
         }
     }
 
-    private static ResultadoEmissao enviarEProcessar(Sefaz4jConfig config, String xmlAssinado) {
-        ValidadorXsd.validar(xmlAssinado, DPS_XSD_RAIZ);
+    private static ResultadoEmissao enviarEProcessar(Sefaz4jConfig config, String xmlAssinado, LeiauteNFSe leiaute) {
+        ValidadorXsd.validar(xmlAssinado, leiaute.getXsdRaiz());
 
         String url = config.getUrlOverride() != null
             ? config.getUrlOverride()
